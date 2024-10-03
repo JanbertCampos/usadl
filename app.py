@@ -2,15 +2,18 @@ from flask import Flask, request
 import requests
 import os
 from huggingface_hub import InferenceClient
+import time
 
 app = Flask(__name__)
 
+# Environment variables for tokens
 PAGE_ACCESS_TOKEN = os.environ.get('PAGE_ACCESS_TOKEN')
 HUGGINGFACES_API_KEY = os.environ.get('HUGGINGFACES_API_KEY')
 VERIFY_TOKEN = os.environ.get('VERIFY_TOKEN', '12345')
 
-client = InferenceClient(api_key=HUGGINGFACES_API_KEY)
+# User context to store information
 user_contexts = {}
+client = InferenceClient(api_key=HUGGINGFACES_API_KEY)
 
 @app.route('/webhook', methods=['GET'])
 def verify():
@@ -29,27 +32,59 @@ def webhook():
             message_text = event.get('message', {}).get('text')
             attachments = event.get('message', {}).get('attachments', [])
 
-            print(f"Received message from {sender_id}: {message_text}")
+            context = user_contexts.get(sender_id, {'messages': [], 'name': None})
 
-            if message_text and "get started" in message_text.lower():
-                send_gallery_options(sender_id)
-            elif message_text and "ask a question" in message_text.lower():
-                send_message(sender_id, "What is your question?")
-            elif message_text and "describe image" in message_text.lower():
-                send_message(sender_id, "Please send an image for me to describe.")
-            elif attachments:
-                handle_attachments(sender_id, attachments)
-            elif message_text:
-                handle_general_query(sender_id, message_text)
+            if message_text:
+                print(f"Received message from {sender_id}: {message_text}")
+                context['messages'].append(message_text)
+
+                if "get started" in message_text.lower():
+                    send_button_slider(sender_id)
+                elif "ask a question" in message_text.lower():
+                    send_typing_indicator(sender_id)
+                    send_message(sender_id, "What is your question?")
+                elif "describe image" in message_text.lower():
+                    send_typing_indicator(sender_id)
+                    send_message(sender_id, "Please send an image for me to describe.")
+                elif "feedback" in message_text.lower():
+                    send_typing_indicator(sender_id)
+                    send_message(sender_id, "Please provide your feedback:")
+                elif attachments:
+                    handle_attachments(sender_id, attachments)
+                else:
+                    handle_general_query(sender_id, message_text)
+
+            user_contexts[sender_id] = context
 
     return 'OK', 200
 
-def send_gallery_options(recipient_id):
-    options = [
-        "1. Ask a Question",
-        "2. Describe Image"
-    ]
-    send_message(recipient_id, "Choose an option:\n" + "\n".join(options))
+def send_button_slider(recipient_id):
+    payload = {
+        'messaging_type': 'RESPONSE',
+        'recipient': {'id': recipient_id},
+        'message': {
+            'text': "Choose an option:",
+            'quick_replies': [
+                {'content_type': 'text', 'title': 'Ask a Question', 'payload': 'ASK_QUESTION'},
+                {'content_type': 'text', 'title': 'Describe Image', 'payload': 'DESCRIBE_IMAGE'},
+                {'content_type': 'text', 'title': 'Give Feedback', 'payload': 'FEEDBACK'}
+            ]
+        }
+    }
+    send_message_with_typing(recipient_id, payload)
+
+def send_typing_indicator(recipient_id):
+    requests.post(f'https://graph.facebook.com/v12.0/me/messages?access_token={PAGE_ACCESS_TOKEN}', json={
+        'recipient': {'id': recipient_id},
+        'sender_action': 'typing_on'
+    })
+
+def send_message_with_typing(recipient_id, payload):
+    send_typing_indicator(recipient_id)
+    time.sleep(1)  # Simulate typing delay
+    response = requests.post(f'https://graph.facebook.com/v12.0/me/messages?access_token={PAGE_ACCESS_TOKEN}', json=payload)
+    if response.status_code != 200:
+        print(f"Failed to send message: {response.text}")
 
 def send_message(recipient_id, message_text):
     payload = {
@@ -60,8 +95,6 @@ def send_message(recipient_id, message_text):
     response = requests.post(f'https://graph.facebook.com/v12.0/me/messages?access_token={PAGE_ACCESS_TOKEN}', json=payload)
     if response.status_code != 200:
         print(f"Failed to send message: {response.text}")
-    else:
-        print(f"Message sent successfully to {recipient_id}: {message_text}")
 
 def handle_attachments(sender_id, attachments):
     for attachment in attachments:
@@ -90,9 +123,7 @@ def get_huggingface_image_response(image_url):
             max_tokens=500,
             stream=True,
         )
-
         text = "".join(message.choices[0].delta.content for message in response)
-
         return text if text else "I'm sorry, I couldn't generate a response."
     except Exception as e:
         print(f"Error getting response from Hugging Face: {e}")
@@ -112,13 +143,16 @@ def get_huggingface_question_response(question):
             max_tokens=500,
             stream=True,
         )
-
         text = "".join(message.choices[0].delta.content for message in response)
-
         return text if text else "I'm sorry, I couldn't generate a response."
     except Exception as e:
         print(f"Error getting response from Hugging Face: {e}")
         return "Sorry, I'm having trouble responding right now."
+
+def handle_feedback(sender_id, feedback):
+    # Store feedback in a database or log it
+    print(f"Feedback from {sender_id}: {feedback}")
+    send_message(sender_id, "Thank you for your feedback!")
 
 if __name__ == '__main__':
     app.run(port=5000, debug=True)
