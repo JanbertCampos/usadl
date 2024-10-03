@@ -48,9 +48,6 @@ def webhook():
                     send_message(sender_id, "Please send an image for me to describe.")
                 elif "describe" in message_text.lower():
                     handle_attachments(sender_id, attachments)
-                elif "feedback" in message_text.lower():
-                    send_typing_indicator(sender_id)
-                    send_message(sender_id, "Please provide your feedback:")
                 else:
                     handle_general_query(sender_id, message_text)
 
@@ -85,7 +82,6 @@ def send_button_slider(recipient_id):
         }
     }
     send_message_with_typing(recipient_id, payload)
-
 
 def send_typing_indicator(recipient_id):
     requests.post(f'https://graph.facebook.com/v12.0/me/messages?access_token={PAGE_ACCESS_TOKEN}', json={
@@ -162,10 +158,6 @@ def get_huggingface_question_response(question):
     except Exception as e:
         print(f"Error getting response from Hugging Face: {e}")
         return "Sorry, I'm having trouble responding right now."
-
-def handle_feedback(sender_id, feedback):
-    print(f"Feedback from {sender_id}: {feedback}")
-    send_message(sender_id, "Thank you for your feedback!")
 
 if __name__ == '__main__':
     app.run(port=5000, debug=True)
