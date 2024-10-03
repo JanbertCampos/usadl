@@ -2,6 +2,7 @@ from flask import Flask, request
 import requests
 import os
 from huggingface_hub import InferenceClient
+import time
 
 app = Flask(__name__)
 
@@ -46,6 +47,8 @@ def webhook():
                         for attachment in attachments:
                             if attachment['type'] == 'image':
                                 image_url = attachment['payload']['url']
+                                typing_indicator(sender_id)  # Show typing indicator
+                                time.sleep(1)  # Simulate typing delay
                                 response_text = get_huggingface_response(context, image_url)
                                 send_message(sender_id, response_text)
                                 break  # Exit after processing the first image
@@ -56,8 +59,14 @@ def webhook():
                 elif "that" in message_text.lower():
                     send_message(sender_id, "I need an image to describe. Please send me an image.")
 
+                # Offer buttons for the user
+                elif "gallery" in message_text.lower():
+                    send_gallery_options(sender_id)
+
                 # Send a response if there was no image
                 elif not attachments:
+                    typing_indicator(sender_id)  # Show typing indicator
+                    time.sleep(1)  # Simulate typing delay
                     response_text = get_huggingface_response(context)
                     send_message(sender_id, response_text)
 
@@ -66,17 +75,39 @@ def webhook():
 
     return 'OK', 200
 
-def send_message(recipient_id, message_text):
+def send_message(recipient_id, message_text, buttons=None):
     payload = {
         'messaging_type': 'RESPONSE',
         'recipient': {'id': recipient_id},
-        'message': {'text': message_text}
     }
+    
+    if buttons:
+        payload['message'] = {
+            'text': message_text,
+            'quick_replies': buttons
+        }
+    else:
+        payload['message'] = {'text': message_text}
+    
     response = requests.post(f'https://graph.facebook.com/v12.0/me/messages?access_token={PAGE_ACCESS_TOKEN}', json=payload)
     if response.status_code != 200:
         print(f"Failed to send message: {response.text}")
     else:
         print(f"Message sent successfully to {recipient_id}: {message_text}")
+
+def typing_indicator(recipient_id):
+    payload = {
+        'recipient': {'id': recipient_id},
+        'sender_action': 'typing_on'
+    }
+    requests.post(f'https://graph.facebook.com/v12.0/me/messages?access_token={PAGE_ACCESS_TOKEN}', json=payload)
+
+def send_gallery_options(recipient_id):
+    buttons = [
+        {"content_type": "text", "title": "Ask a Question", "payload": "ASK_QUESTION"},
+        {"content_type": "text", "title": "Describe Image", "payload": "DESCRIBE_IMAGE"}
+    ]
+    send_message(recipient_id, "Choose an option:", buttons)
 
 def get_huggingface_response(context, image_url=None):
     messages = []
