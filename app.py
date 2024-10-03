@@ -1,13 +1,13 @@
 from flask import Flask, request
 import requests
 import os
-from huggingface_hub import HfApi
+from huggingface_hub import InferenceClient
 
 app = Flask(__name__)
 
 # Replace with your actual tokens
 PAGE_ACCESS_TOKEN = os.environ.get('PAGE_ACCESS_TOKEN')
-HUGGINGFACE_API_KEY = os.environ.get('HUGGINGFACE_API_KEY')
+HUGGINGFACES_API_KEY = os.environ.get('HUGGINGFACES_API_KEY')
 VERIFY_TOKEN = os.environ.get('VERIFY_TOKEN', '12345')
 
 # Instructions for the AI
@@ -26,8 +26,8 @@ AI_INSTRUCTIONS = (
 # Dictionary to store user conversations and topics
 user_contexts = {}
 
-# Initialize the Hugging Face API
-api = HfApi()
+# Initialize the Hugging Face API client
+client = InferenceClient(api_key=HUGGINGFACES_API_KEY)
 
 @app.route('/webhook', methods=['GET'])
 def verify():
@@ -80,14 +80,14 @@ def get_huggingface_response(context):
     user_input = " ".join(context['messages'])
     
     try:
-        response = api.inference(
+        response = client.chat_completion(
             model="meta-llama/Meta-Llama-3-8B-Instruct",
-            inputs=user_input,
-            parameters={"max_new_tokens": 500},
-            options={"use_cache": False}
+            messages=[{"role": "user", "content": user_input}],
+            max_tokens=500,
+            stream=False
         )
 
-        text = response.get('generated_text', "")
+        text = response.choices[0].message['content'] if response.choices else ""
 
         if not text:
             return "I'm sorry, I couldn't generate a response. Can you please ask something else?"
