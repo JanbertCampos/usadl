@@ -1,7 +1,7 @@
 from flask import Flask, request
 import requests
 import os
-from huggingface_hub import InferenceClient
+from huggingface_hub import HfApi
 
 app = Flask(__name__)
 
@@ -26,8 +26,8 @@ AI_INSTRUCTIONS = (
 # Dictionary to store user conversations and topics
 user_contexts = {}
 
-# Initialize the Hugging Face InferenceClient
-client = InferenceClient(api_key=HUGGINGFACE_API_KEY)
+# Initialize the Hugging Face API
+api = HfApi()
 
 @app.route('/webhook', methods=['GET'])
 def verify():
@@ -49,13 +49,8 @@ def webhook():
                 print(f"Received message from {sender_id}: {message_text}")
 
                 # Retrieve or initialize the conversation context
-                context = user_contexts.get(sender_id, {'messages': [], 'previous_topics': []})
+                context = user_contexts.get(sender_id, {'messages': []})
                 context['messages'].append(message_text)  # Add the new message to the context
-
-                # Detect if the user is changing the topic
-                if context['messages']:
-                    if len(context['messages']) > 1 and context['messages'][-2] != message_text:
-                        context['previous_topics'].append(context['messages'][-2])  # Store the previous topic
 
                 # Get response from Hugging Face model
                 response_text = get_huggingface_response(context)
@@ -70,45 +65,29 @@ def webhook():
     return 'OK', 200
 
 def send_message(recipient_id, message_text):
-    max_length = 2000
-    part_num = 1
-    while message_text:
-        part = message_text[:max_length]
-        message_text = message_text[max_length:]
-
-        if message_text:
-            part_info = f"Part {part_num} of {len(message_text) // max_length + 1}"
-            part = f"{part_info}: {part}"
-        
-        payload = {
-            'messaging_type': 'RESPONSE',
-            'recipient': {'id': recipient_id},
-            'message': {'text': part}
-        }
-        print(f"Sending message to {recipient_id}: {part}")
-        response = requests.post(f'https://graph.facebook.com/v12.0/me/messages?access_token={PAGE_ACCESS_TOKEN}', json=payload)
-        if response.status_code != 200:
-            print(f"Failed to send message: {response.text}")
-        else:
-            print(f"Message sent successfully to {recipient_id}: {part}")
-        part_num += 1
+    payload = {
+        'messaging_type': 'RESPONSE',
+        'recipient': {'id': recipient_id},
+        'message': {'text': message_text}
+    }
+    response = requests.post(f'https://graph.facebook.com/v12.0/me/messages?access_token={PAGE_ACCESS_TOKEN}', json=payload)
+    if response.status_code != 200:
+        print(f"Failed to send message: {response.text}")
+    else:
+        print(f"Message sent successfully to {recipient_id}: {message_text}")
 
 def get_huggingface_response(context):
     user_input = " ".join(context['messages'])
     
-    if context['previous_topics']:
-        previous_topics = " Previous topics: " + ", ".join(context['previous_topics'])
-        user_input += previous_topics
-
     try:
-        response = client.chat_completion(
+        response = api.inference(
             model="meta-llama/Meta-Llama-3-8B-Instruct",
-            messages=[{"role": "user", "content": f"{AI_INSTRUCTIONS} {user_input}"}],
-            max_tokens=500,
-            stream=False,
+            inputs=user_input,
+            parameters={"max_new_tokens": 500},
+            options={"use_cache": False}
         )
 
-        text = response['choices'][0]['message']['content']
+        text = response.get('generated_text', "")
 
         if not text:
             return "I'm sorry, I couldn't generate a response. Can you please ask something else?"
