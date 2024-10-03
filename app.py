@@ -21,7 +21,7 @@ def verify():
 @app.route('/webhook', methods=['POST'])
 def webhook():
     data = request.get_json()
-    print(f"Incoming data: {data}")  # Log incoming data
+    print(f"Incoming data: {data}")
 
     if 'messaging' in data['entry'][0]:
         for event in data['entry'][0]['messaging']:
@@ -29,9 +29,8 @@ def webhook():
             message_text = event.get('message', {}).get('text')
             attachments = event.get('message', {}).get('attachments', [])
 
-            print(f"Received message from {sender_id}: {message_text}")  # Log received message
+            print(f"Received message from {sender_id}: {message_text}")
 
-            # Handle commands
             if message_text and "get started" in message_text.lower():
                 send_gallery_options(sender_id)
             elif message_text and "ask a question" in message_text.lower():
@@ -41,8 +40,8 @@ def webhook():
             elif attachments:
                 handle_attachments(sender_id, attachments)
             elif message_text:
-                send_message(sender_id, "I can only respond to specific commands.")
-    
+                handle_general_query(sender_id, message_text)
+
     return 'OK', 200
 
 def send_gallery_options(recipient_id):
@@ -87,6 +86,28 @@ def get_huggingface_image_response(image_url):
     try:
         response = client.chat_completion(
             model="meta-llama/Llama-3.2-11B-Vision-Instruct",
+            messages=messages,
+            max_tokens=500,
+            stream=True,
+        )
+
+        text = "".join(message.choices[0].delta.content for message in response)
+
+        return text if text else "I'm sorry, I couldn't generate a response."
+    except Exception as e:
+        print(f"Error getting response from Hugging Face: {e}")
+        return "Sorry, I'm having trouble responding right now."
+
+def handle_general_query(sender_id, message_text):
+    response_text = get_huggingface_question_response(message_text)
+    send_message(sender_id, response_text)
+
+def get_huggingface_question_response(question):
+    messages = [{"role": "user", "content": question}]
+
+    try:
+        response = client.chat_completion(
+            model="meta-llama/Meta-Llama-3-8B-Instruct",
             messages=messages,
             max_tokens=500,
             stream=True,
