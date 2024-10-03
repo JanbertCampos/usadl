@@ -1,7 +1,7 @@
 from flask import Flask, request
 import requests
 import os
-from huggingface_hub import InferenceClient
+from huggingface_hub import HfApi
 
 app = Flask(__name__)
 
@@ -26,8 +26,8 @@ AI_INSTRUCTIONS = (
 # Dictionary to store user conversations and topics
 user_contexts = {}
 
-# Initialize the InferenceClient
-client = InferenceClient(api_key=HUGGINGFACE_API_KEY)
+# Initialize the Hugging Face API
+api = HfApi()
 
 @app.route('/webhook', methods=['GET'])
 def verify():
@@ -94,23 +94,20 @@ def send_message(recipient_id, message_text):
         part_num += 1
 
 def get_huggingface_response(context):
-    # Join the conversation context into a single string
     user_input = " ".join(context['messages'])
     
-    # Optionally include previous topics for context
     if context['previous_topics']:
         previous_topics = " Previous topics: " + ", ".join(context['previous_topics'])
         user_input += previous_topics
 
     try:
-        response = client.chat_completion(
+        response = api.inference(
             model="meta-llama/Meta-Llama-3-8B-Instruct",
-            messages=[{"role": "user", "content": f"{AI_INSTRUCTIONS} {user_input}"}],
-            max_tokens=500,
-            stream=False,
+            inputs=user_input,
+            options={"max_length": 500}
         )
 
-        text = response['choices'][0]['message']['content']
+        text = response['generated_text']
 
         if not text:
             return "I'm sorry, I couldn't generate a response. Can you please ask something else?"
