@@ -69,7 +69,8 @@ def send_message(recipient_id, message_text):
         print(f"Message sent successfully to {recipient_id}: {message_text}")
 
 def get_huggingface_response(context):
-    user_input = " ".join(context['messages'])
+    # Get only the last user message for response
+    user_input = context['messages'][-1] if context['messages'] else ""
     
     try:
         response = client.chat_completion(
@@ -86,8 +87,8 @@ def get_huggingface_response(context):
 
         return text
     except Exception as e:
-        print(f"Error getting response from Hugging Face: {e}")
+        logger.error(f"Error getting response from Hugging Face: {e}")
         return "Sorry, I'm having trouble responding right now."
-
+        
 if __name__ == '__main__':
     app.run(port=5000, debug=True)
