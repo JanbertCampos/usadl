@@ -1,7 +1,7 @@
 from flask import Flask, request
 import requests
 import os
-from huggingface_hub import HuggingFaceHub
+from huggingface_hub import InferenceClient
 
 app = Flask(__name__)
 
@@ -26,8 +26,8 @@ AI_INSTRUCTIONS = (
 # Dictionary to store user conversations and topics
 user_contexts = {}
 
-# Initialize the HuggingFaceHub client
-client = HuggingFaceHub(api_key=HUGGINGFACE_API_KEY)
+# Initialize the InferenceClient
+client = InferenceClient(api_key=HUGGINGFACE_API_KEY)
 
 @app.route('/webhook', methods=['GET'])
 def verify():
