@@ -22,7 +22,6 @@ def verify():
         return request.args.get('hub.challenge')
     return 'Invalid verification token', 403
 
-@app.route('/webhook', methods=['POST'])
 def webhook():
     data = request.get_json()
     print(f"Incoming data: {data}")
@@ -40,20 +39,22 @@ def webhook():
                 print(f"Received message from {sender_id}: {message_text}")
                 context['messages'].append(message_text)  # Add text message to context
             
-            # Check for image attachments
-            if attachments:
-                for attachment in attachments:
-                    if attachment['type'] == 'image':
-                        image_url = attachment['payload']['url']
-                        context['messages'].append(f"[Image]({image_url})")  # Log the image URL
-                        response_text = get_huggingface_response(context, image_url)
-                        send_message(sender_id, response_text)
-                        break  # Exit after processing the first image
+                # Check if the user is asking to describe something
+                if "describe this" in message_text.lower():
+                    if attachments:
+                        for attachment in attachments:
+                            if attachment['type'] == 'image':
+                                image_url = attachment['payload']['url']
+                                response_text = get_huggingface_response(context, image_url)
+                                send_message(sender_id, response_text)
+                                break  # Exit after processing the first image
+                    else:
+                        send_message(sender_id, "Please send an image for me to describe.")
 
-            # Send a response if there was no image
-            elif message_text:
-                response_text = get_huggingface_response(context)
-                send_message(sender_id, response_text)
+                # Send a response if there was no image
+                elif not attachments:
+                    response_text = get_huggingface_response(context)
+                    send_message(sender_id, response_text)
 
             # Store updated context
             user_contexts[sender_id] = context
