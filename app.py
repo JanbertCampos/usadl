@@ -52,6 +52,10 @@ def webhook():
                     else:
                         send_message(sender_id, "Please send an image for me to describe.")
 
+                # Handle requests like "describe that" or similar
+                elif "that" in message_text.lower():
+                    send_message(sender_id, "I need an image to describe. Please send me an image.")
+
                 # Send a response if there was no image
                 elif not attachments:
                     response_text = get_huggingface_response(context)
