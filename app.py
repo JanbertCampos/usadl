@@ -41,7 +41,7 @@ def webhook():
                 context['messages'].append(message_text)  # Add text message to context
 
                 # Check if the user is asking to describe something
-                if "describe this" in message_text.lower():
+                if any(phrase in message_text.lower() for phrase in ["describe", "describe this", "can you describe", "tell me about"]):
                     if attachments:
                         for attachment in attachments:
                             if attachment['type'] == 'image':
