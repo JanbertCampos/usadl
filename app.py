@@ -46,11 +46,11 @@ def webhook():
                 elif "describe image" in message_text.lower():
                     send_typing_indicator(sender_id)
                     send_message(sender_id, "Please send an image for me to describe.")
+                elif "describe" in message_text.lower():
+                    handle_attachments(sender_id, attachments)
                 elif "feedback" in message_text.lower():
                     send_typing_indicator(sender_id)
                     send_message(sender_id, "Please provide your feedback:")
-                elif attachments:
-                    handle_attachments(sender_id, attachments)
                 else:
                     handle_general_query(sender_id, message_text)
 
@@ -150,7 +150,6 @@ def get_huggingface_question_response(question):
         return "Sorry, I'm having trouble responding right now."
 
 def handle_feedback(sender_id, feedback):
-    # Store feedback in a database or log it
     print(f"Feedback from {sender_id}: {feedback}")
     send_message(sender_id, "Thank you for your feedback!")
 
