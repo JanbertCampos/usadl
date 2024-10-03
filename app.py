@@ -2,6 +2,7 @@ from flask import Flask, request
 import requests
 import os
 from huggingface_hub import InferenceClient
+import time
 
 app = Flask(__name__)
 
@@ -44,6 +45,9 @@ def webhook():
                 context = user_contexts.get(sender_id, {'messages': []})
                 context['messages'].append(message_text)  # Add the new message to the context
 
+                # Send typing indicator
+                send_typing_indicator(sender_id)
+
                 # Get response from Hugging Face model
                 response_text = get_huggingface_response(context)
                 print(f"Full response: {response_text}")
@@ -68,6 +72,14 @@ def send_message(recipient_id, message_text):
     else:
         print(f"Message sent successfully to {recipient_id}: {message_text}")
 
+def send_typing_indicator(recipient_id):
+    payload = {
+        'recipient': {'id': recipient_id},
+        'sender_action': 'typing_on'
+    }
+    requests.post(f'https://graph.facebook.com/v12.0/me/messages?access_token={PAGE_ACCESS_TOKEN}', json=payload)
+    time.sleep(1)  # Simulate typing delay (optional)
+
 def get_huggingface_response(context):
     # Get only the last user message for response
     user_input = context['messages'][-1] if context['messages'] else ""
@@ -87,7 +99,7 @@ def get_huggingface_response(context):
 
         return text
     except Exception as e:
-        logger.error(f"Error getting response from Hugging Face: {e}")
+        print(f"Error getting response from Hugging Face: {e}")
         return "Sorry, I'm having trouble responding right now."
         
 if __name__ == '__main__':
