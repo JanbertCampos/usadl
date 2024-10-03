@@ -41,6 +41,7 @@ def webhook():
         for event in data['entry'][0]['messaging']:
             sender_id = event['sender']['id']
             message_text = event.get('message', {}).get('text')
+            customer_name = event.get('message', {}).get('customer', {}).get('first_name', 'there')
 
             if message_text:
                 print(f"Received message from {sender_id}: {message_text}")
@@ -57,6 +58,9 @@ def webhook():
 
                 # Get response from Gemini API with instructions included
                 response_text = get_gemini_response(context)
+
+                # Mention the customer's name in the response
+                response_text = f"Hi {customer_name}, {response_text}"
                 print(f"Full response: {response_text}")
 
                 # Send the response back to the user
@@ -66,7 +70,6 @@ def webhook():
                 user_contexts[sender_id] = context
 
     return 'OK', 200
-
 
 def send_message(recipient_id, message_text):
     max_length = 2000
