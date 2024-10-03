@@ -40,6 +40,7 @@ def webhook():
                 print(f"Received message from {sender_id}: {message_text}")
                 context['messages'].append(message_text)  # Add text message to context
 
+                # Handle "Get Started" command
                 if "get started" in message_text.lower():
                     send_gallery_options(sender_id)
 
@@ -72,6 +73,13 @@ def webhook():
             user_contexts[sender_id] = context
 
     return 'OK', 200
+
+def send_gallery_options(recipient_id):
+    options = [
+        "1. Ask a Question",
+        "2. Describe Image"
+    ]
+    send_message(recipient_id, "Choose an option:\n" + "\n".join(options))
 
 def send_message(recipient_id, message_text):
     payload = {
