@@ -22,6 +22,7 @@ def verify():
         return request.args.get('hub.challenge')
     return 'Invalid verification token', 403
 
+@app.route('/webhook', methods=['POST'])
 def webhook():
     data = request.get_json()
     print(f"Incoming data: {data}")
@@ -38,7 +39,7 @@ def webhook():
             if message_text:
                 print(f"Received message from {sender_id}: {message_text}")
                 context['messages'].append(message_text)  # Add text message to context
-            
+
                 # Check if the user is asking to describe something
                 if "describe this" in message_text.lower():
                     if attachments:
