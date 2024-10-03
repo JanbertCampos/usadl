@@ -40,14 +40,12 @@ def webhook():
 
                 if "get started" in message_text.lower():
                     send_button_slider(sender_id)
-                elif "ask a question" in message_text.lower():
-                    send_typing_indicator(sender_id)
-                    send_message(sender_id, "What is your question?")
-                elif "describe image" in message_text.lower():
-                    send_typing_indicator(sender_id)
-                    send_message(sender_id, "Please send an image for me to describe.")
-                elif "describe" in message_text.lower():
-                    handle_attachments(sender_id, attachments)
+                elif "ask" in message_text.lower() or "describe" in message_text.lower():
+                    if attachments:
+                        handle_attachments(sender_id, attachments)
+                    else:
+                        send_typing_indicator(sender_id)
+                        send_message(sender_id, "What would you like to ask or describe? Please send an image or ask your question.")
                 else:
                     handle_general_query(sender_id, message_text)
 
@@ -121,7 +119,7 @@ def get_huggingface_image_response(image_url):
             "role": "user",
             "content": [
                 {"type": "image_url", "image_url": {"url": image_url}},
-                {"type": "text", "text": "Describe this image in one sentence."},
+                {"type": "text", "text": "Describe this image or answer questions about it."},
             ],
         }
     ]
