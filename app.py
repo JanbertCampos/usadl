@@ -6,18 +6,16 @@ import time
 
 app = Flask(__name__)
 
-# Environment variables for tokens
+# Replace with your actual tokens
 PAGE_ACCESS_TOKEN = os.environ.get('PAGE_ACCESS_TOKEN')
 HUGGINGFACES_API_KEY = os.environ.get('HUGGINGFACES_API_KEY')
 VERIFY_TOKEN = os.environ.get('VERIFY_TOKEN', '12345')
 
-# User context to store information
+# Dictionary to store user conversations and topics
 user_contexts = {}
-client = InferenceClient(api_key=HUGGINGFACES_API_KEY)
 
-@app.route('/')
-def index():
-    return "Welcome to the Marizjan AI love from janbert =)", 200
+# Initialize the Hugging Face API client
+client = InferenceClient(api_key=HUGGINGFACES_API_KEY)
 
 @app.route('/webhook', methods=['GET'])
 def verify():
@@ -30,73 +28,32 @@ def webhook():
     data = request.get_json()
     print(f"Incoming data: {data}")
 
-    if 'messaging' in data['entry'][0]:
+    if 'entry' in data and 'messaging' in data['entry'][0]:
         for event in data['entry'][0]['messaging']:
             sender_id = event['sender']['id']
             message_text = event.get('message', {}).get('text')
-            attachments = event.get('message', {}).get('attachments', [])
-
-            context = user_contexts.get(sender_id, {'messages': [], 'name': None})
 
             if message_text:
                 print(f"Received message from {sender_id}: {message_text}")
-                context['messages'].append(message_text)
 
-                if "get started" in message_text.lower():
-                    send_button_slider(sender_id)
-                elif "ask a question" in message_text.lower() or "describe" in message_text.lower():
-                    if attachments:
-                        handle_attachments(sender_id, attachments)
-                    else:
-                        send_typing_indicator(sender_id)
-                        send_message(sender_id, "What would you like to ask or describe? Please send an image or ask your question.")
-                else:
-                    handle_general_query(sender_id, message_text)
+                # Retrieve or initialize the conversation context
+                context = user_contexts.get(sender_id, {'messages': []})
+                context['messages'].append(message_text)  # Add the new message to the context
 
-            user_contexts[sender_id] = context
+                # Send typing indicator
+                send_typing_indicator(sender_id)
+
+                # Get response from Hugging Face model
+                response_text = get_huggingface_response(context)
+                print(f"Response to user: {response_text}")
+
+                # Send the response back to the user
+                send_message(sender_id, response_text)
+
+                # Store updated context
+                user_contexts[sender_id] = context
 
     return 'OK', 200
-    
-def send_button_slider(recipient_id):
-    payload = {
-        'messaging_type': 'RESPONSE',
-        'recipient': {'id': recipient_id},
-        'message': {
-            'attachment': {
-                'type': 'template',
-                'payload': {
-                    'template_type': 'button',
-                    'text': "Choose an option:",
-                    'buttons': [
-                        {
-                            'type': 'postback',
-                            'title': 'Ask a Question',
-                            'payload': 'ASK_QUESTION'
-                        },
-                        {
-                            'type': 'postback',
-                            'title': 'Describe Image',
-                            'payload': 'DESCRIBE_IMAGE'
-                        }
-                    ]
-                }
-            }
-        }
-    }
-    send_message_with_typing(recipient_id, payload)
-
-def send_typing_indicator(recipient_id):
-    requests.post(f'https://graph.facebook.com/v12.0/me/messages?access_token={PAGE_ACCESS_TOKEN}', json={
-        'recipient': {'id': recipient_id},
-        'sender_action': 'typing_on'
-    })
-
-def send_message_with_typing(recipient_id, payload):
-    send_typing_indicator(recipient_id)
-    time.sleep(1)  # Simulate typing delay
-    response = requests.post(f'https://graph.facebook.com/v12.0/me/messages?access_token={PAGE_ACCESS_TOKEN}', json=payload)
-    if response.status_code != 200:
-        print(f"Failed to send message: {response.text}")
 
 def send_message(recipient_id, message_text):
     payload = {
@@ -107,56 +64,36 @@ def send_message(recipient_id, message_text):
     response = requests.post(f'https://graph.facebook.com/v12.0/me/messages?access_token={PAGE_ACCESS_TOKEN}', json=payload)
     if response.status_code != 200:
         print(f"Failed to send message: {response.text}")
+    else:
+        print(f"Message sent successfully to {recipient_id}: {message_text}")
 
-def handle_attachments(sender_id, attachments):
-    for attachment in attachments:
-        if attachment['type'] == 'image':
-            image_url = attachment['payload']['url']
-            response_text = get_huggingface_image_response(image_url)
-            send_message(sender_id, response_text)
-            return
-    send_message(sender_id, "I didn't receive a valid image. Please try again.")
+def send_typing_indicator(recipient_id):
+    payload = {
+        'recipient': {'id': recipient_id},
+        'sender_action': 'typing_on'
+    }
+    requests.post(f'https://graph.facebook.com/v12.0/me/messages?access_token={PAGE_ACCESS_TOKEN}', json=payload)
+    time.sleep(1)  # Simulate typing delay (optional)
 
-def get_huggingface_image_response(image_url):
-    messages = [
-        {
-            "role": "user",
-            "content": [
-                {"type": "image_url", "image_url": {"url": image_url}},
-                {"type": "text", "text": "Describe this image in one sentence."},
-            ],
-        }
-    ]
-
-    try:
-        response = client.chat_completion(
-            model="meta-llama/Llama-3.2-11B-Vision-Instruct",
-            messages=messages,
-            max_tokens=500,
-            stream=True,
-        )
-        text = "".join(message.choices[0].delta.content for message in response)
-        return text if text else "I'm sorry, I couldn't generate a response."
-    except Exception as e:
-        print(f"Error getting response from Hugging Face: {e}")
-        return "Sorry, I'm having trouble responding right now."
-
-def handle_general_query(sender_id, message_text):
-    response_text = get_huggingface_question_response(message_text)
-    send_message(sender_id, response_text)
-
-def get_huggingface_question_response(question):
-    messages = [{"role": "user", "content": question}]
-
+def get_huggingface_response(context):
+    # Get only the last user message for response
+    user_input = context['messages'][-1] if context['messages'] else ""
+    
     try:
         response = client.chat_completion(
             model="meta-llama/Meta-Llama-3-8B-Instruct",
-            messages=messages,
+            messages=[{"role": "user", "content": user_input}],
             max_tokens=500,
-            stream=True,
+            stream=False
         )
-        text = "".join(message.choices[0].delta.content for message in response)
-        return text if text else "I'm sorry, I couldn't generate a response."
+
+        # Ensure proper response extraction
+        text = response['choices'][0]['message']['content'] if 'choices' in response and response['choices'] else ""
+
+        if not text:
+            return "I'm sorry, I couldn't generate a response. Can you please ask something else?"
+
+        return text
     except Exception as e:
         print(f"Error getting response from Hugging Face: {e}")
         return "Sorry, I'm having trouble responding right now."
