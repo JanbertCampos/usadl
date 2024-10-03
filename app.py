@@ -51,14 +51,19 @@ def webhook():
 
                 # Handle image attachments
                 elif attachments:
+                    image_url = None
                     for attachment in attachments:
                         if attachment['type'] == 'image':
                             image_url = attachment['payload']['url']
-                            typing_indicator(sender_id)  # Show typing indicator
-                            time.sleep(1)  # Simulate typing delay
-                            response_text = get_huggingface_response(context, image_url)
-                            send_message(sender_id, response_text)
                             break  # Exit after processing the first image
+
+                    if image_url:
+                        typing_indicator(sender_id)  # Show typing indicator
+                        time.sleep(1)  # Simulate typing delay
+                        response_text = get_huggingface_response(context, image_url)
+                        send_message(sender_id, response_text)
+                    else:
+                        send_message(sender_id, "I didn't receive a valid image. Please try again.")
 
                 # Handle requests like "describe that" or similar
                 elif "that" in message_text.lower():
