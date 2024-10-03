@@ -45,26 +45,27 @@ def webhook():
                 if message_text.lower() == "get started":
                     send_gallery_options(sender_id)
 
-                # Check if the user is asking to describe something
-                elif any(phrase in message_text.lower() for phrase in ["describe", "describe this", "can you describe", "tell me about"]):
-                    if attachments:
-                        for attachment in attachments:
-                            if attachment['type'] == 'image':
-                                image_url = attachment['payload']['url']
-                                typing_indicator(sender_id)  # Show typing indicator
-                                time.sleep(1)  # Simulate typing delay
-                                response_text = get_huggingface_response(context, image_url)
-                                send_message(sender_id, response_text)
-                                break  # Exit after processing the first image
-                    else:
-                        send_message(sender_id, "Please send an image for me to describe.")
+                # Check if the user selected "Describe Image"
+                elif "describe image" in message_text.lower():
+                    send_message(sender_id, "Please send an image for me to describe.")
+
+                # Handle image attachments
+                elif attachments:
+                    for attachment in attachments:
+                        if attachment['type'] == 'image':
+                            image_url = attachment['payload']['url']
+                            typing_indicator(sender_id)  # Show typing indicator
+                            time.sleep(1)  # Simulate typing delay
+                            response_text = get_huggingface_response(context, image_url)
+                            send_message(sender_id, response_text)
+                            break  # Exit after processing the first image
 
                 # Handle requests like "describe that" or similar
                 elif "that" in message_text.lower():
                     send_message(sender_id, "I need an image to describe. Please send me an image.")
 
                 # Send a response if there was no image
-                elif not attachments:
+                else:
                     typing_indicator(sender_id)  # Show typing indicator
                     time.sleep(1)  # Simulate typing delay
                     response_text = get_huggingface_response(context)
