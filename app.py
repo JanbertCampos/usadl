@@ -63,10 +63,6 @@ def webhook():
                 # Store updated context
                 user_contexts[sender_id] = context
 
-            else:
-                # Fallback response if no message text is found
-                send_message(sender_id, "I'm here! How can I assist you today?")
-
     return 'OK', 200
 
 def send_message(recipient_id, message_text):
