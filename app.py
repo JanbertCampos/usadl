@@ -15,6 +15,10 @@ VERIFY_TOKEN = os.environ.get('VERIFY_TOKEN', '12345')
 user_contexts = {}
 client = InferenceClient(api_key=HUGGINGFACES_API_KEY)
 
+@app.route('/')
+def index():
+    return "Welcome to the Marizjan AI love from janbert =)", 200
+
 @app.route('/webhook', methods=['GET'])
 def verify():
     if request.args.get('hub.mode') == 'subscribe' and request.args.get('hub.verify_token') == VERIFY_TOKEN:
@@ -52,7 +56,7 @@ def webhook():
             user_contexts[sender_id] = context
 
     return 'OK', 200
-
+    
 def send_button_slider(recipient_id):
     payload = {
         'messaging_type': 'RESPONSE',
