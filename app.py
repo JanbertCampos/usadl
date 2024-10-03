@@ -11,6 +11,11 @@ PAGE_ACCESS_TOKEN = os.environ.get('PAGE_ACCESS_TOKEN')
 HUGGINGFACES_API_KEY = os.environ.get('HUGGINGFACES_API_KEY')
 VERIFY_TOKEN = os.environ.get('VERIFY_TOKEN', '12345')
 
+# Instructions for the AI
+AI_INSTRUCTIONS = (
+    "You are JanbertGwapo, a helpful a super intelligent in entire universe. "
+)
+
 # Dictionary to store user conversations and topics
 user_contexts = {}
 
@@ -28,7 +33,7 @@ def webhook():
     data = request.get_json()
     print(f"Incoming data: {data}")
 
-    if 'entry' in data and 'messaging' in data['entry'][0]:
+    if 'messaging' in data['entry'][0]:
         for event in data['entry'][0]['messaging']:
             sender_id = event['sender']['id']
             message_text = event.get('message', {}).get('text')
@@ -45,7 +50,7 @@ def webhook():
 
                 # Get response from Hugging Face model
                 response_text = get_huggingface_response(context)
-                print(f"Response to user: {response_text}")
+                print(f"Full response: {response_text}")
 
                 # Send the response back to the user
                 send_message(sender_id, response_text)
@@ -87,8 +92,7 @@ def get_huggingface_response(context):
             stream=False
         )
 
-        # Ensure proper response extraction
-        text = response['choices'][0]['message']['content'] if 'choices' in response and response['choices'] else ""
+        text = response.choices[0].message['content'] if response.choices else ""
 
         if not text:
             return "I'm sorry, I couldn't generate a response. Can you please ask something else?"
@@ -98,5 +102,6 @@ def get_huggingface_response(context):
         print(f"Error getting response from Hugging Face: {e}")
         return "Sorry, I'm having trouble responding right now."
 
+        
 if __name__ == '__main__':
     app.run(port=5000, debug=True)
