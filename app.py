@@ -1,18 +1,14 @@
 from flask import Flask, request
 import requests
-import json
 import os
-from huggingface_hub import InferenceClient
+from huggingface_hub import HuggingFaceHub
 
 app = Flask(__name__)
 
 # Replace with your actual tokens
 PAGE_ACCESS_TOKEN = os.environ.get('PAGE_ACCESS_TOKEN')
-HUGGINGFACE_API_KEY = os.environ.get('HUGGINGFACE_API_KEY')  # Use the Hugging Face API key
+HUGGINGFACE_API_KEY = os.environ.get('HUGGINGFACE_API_KEY')
 VERIFY_TOKEN = os.environ.get('VERIFY_TOKEN', '12345')
-
-# Initialize the Hugging Face client
-client = InferenceClient(api_key=HUGGINGFACE_API_KEY)
 
 # Instructions for the AI
 AI_INSTRUCTIONS = (
@@ -30,6 +26,9 @@ AI_INSTRUCTIONS = (
 # Dictionary to store user conversations and topics
 user_contexts = {}
 
+# Initialize the HuggingFaceHub client
+client = HuggingFaceHub(api_key=HUGGINGFACE_API_KEY)
+
 @app.route('/webhook', methods=['GET'])
 def verify():
     if request.args.get('hub.mode') == 'subscribe' and request.args.get('hub.verify_token') == VERIFY_TOKEN:
@@ -45,7 +44,6 @@ def webhook():
         for event in data['entry'][0]['messaging']:
             sender_id = event['sender']['id']
             message_text = event.get('message', {}).get('text')
-            customer_name = event.get('message', {}).get('customer', {}).get('first_name', 'there')
 
             if message_text:
                 print(f"Received message from {sender_id}: {message_text}")
@@ -56,15 +54,11 @@ def webhook():
 
                 # Detect if the user is changing the topic
                 if context['messages']:
-                    # Only check for the second-to-last message if it exists
                     if len(context['messages']) > 1 and context['messages'][-2] != message_text:
                         context['previous_topics'].append(context['messages'][-2])  # Store the previous topic
 
                 # Get response from Hugging Face model
                 response_text = get_huggingface_response(context)
-                
-                # Mention the customer's name in the response
-                response_text = f"Hi {customer_name}, {response_text}"
                 print(f"Full response: {response_text}")
 
                 # Send the response back to the user
@@ -100,22 +94,28 @@ def send_message(recipient_id, message_text):
         part_num += 1
 
 def get_huggingface_response(context):
+    # Join the conversation context into a single string
     user_input = " ".join(context['messages'])
-    user_input = f"{AI_INSTRUCTIONS} {user_input}"
+    
+    # Optionally include previous topics for context
+    if context['previous_topics']:
+        previous_topics = " Previous topics: " + ", ".join(context['previous_topics'])
+        user_input += previous_topics
 
     try:
-        # Call the Hugging Face API
         response = client.chat_completion(
             model="meta-llama/Meta-Llama-3-8B-Instruct",
-            messages=[{"role": "user", "content": user_input}],
+            messages=[{"role": "user", "content": f"{AI_INSTRUCTIONS} {user_input}"}],
             max_tokens=500,
-            stream=False,  # Set to False to wait for the full response
+            stream=False,
         )
 
-        # Extract the content from the response
-        response_text = response[0]['choices'][0]['message']['content']
-        return response_text if response_text else "I'm sorry, I couldn't generate a response."
-    
+        text = response['choices'][0]['message']['content']
+
+        if not text:
+            return "I'm sorry, I couldn't generate a response. Can you please ask something else?"
+
+        return text
     except Exception as e:
         print(f"Error getting response from Hugging Face: {e}")
         return "Sorry, I'm having trouble responding right now."
