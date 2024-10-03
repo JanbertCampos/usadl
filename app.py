@@ -2,6 +2,7 @@ from flask import Flask, request
 import requests
 import os
 from huggingface_hub import InferenceClient
+import time
 
 app = Flask(__name__)
 
@@ -10,11 +11,16 @@ PAGE_ACCESS_TOKEN = os.environ.get('PAGE_ACCESS_TOKEN')
 HUGGINGFACES_API_KEY = os.environ.get('HUGGINGFACES_API_KEY')
 VERIFY_TOKEN = os.environ.get('VERIFY_TOKEN', '12345')
 
-# Initialize the Hugging Face API client
-client = InferenceClient(api_key=HUGGINGFACES_API_KEY)
+# Instructions for the AI
+AI_INSTRUCTIONS = (
+    "You are JanbertGwapo, a helpful a super intelligent in entire universe. "
+)
 
 # Dictionary to store user conversations and topics
 user_contexts = {}
+
+# Initialize the Hugging Face API client
+client = InferenceClient(api_key=HUGGINGFACES_API_KEY)
 
 @app.route('/webhook', methods=['GET'])
 def verify():
@@ -31,55 +37,28 @@ def webhook():
         for event in data['entry'][0]['messaging']:
             sender_id = event['sender']['id']
             message_text = event.get('message', {}).get('text')
-            attachments = event.get('message', {}).get('attachments', [])
-
-            # Retrieve or initialize the conversation context
-            context = user_contexts.get(sender_id, {'messages': []})
 
             if message_text:
                 print(f"Received message from {sender_id}: {message_text}")
-                context['messages'].append(message_text)  # Add text message to context
 
-                # Handle "Get Started" command
-                if "get started" in message_text.lower():
-                    send_gallery_options(sender_id)
+                # Retrieve or initialize the conversation context
+                context = user_contexts.get(sender_id, {'messages': []})
+                context['messages'].append(message_text)  # Add the new message to the context
 
-                elif "ask a question" in message_text.lower():
-                    send_message(sender_id, "What is your question?")
+                # Send typing indicator
+                send_typing_indicator(sender_id)
 
-                elif "describe image" in message_text.lower():
-                    send_message(sender_id, "Please send an image for me to describe.")
+                # Get response from Hugging Face model
+                response_text = get_huggingface_response(context)
+                print(f"Full response: {response_text}")
 
-                elif attachments:
-                    image_url = None
-                    for attachment in attachments:
-                        if attachment['type'] == 'image':
-                            image_url = attachment['payload']['url']
-                            break
+                # Send the response back to the user
+                send_message(sender_id, response_text)
 
-                    if image_url:
-                        response_text = get_huggingface_image_response(image_url)
-                        send_message(sender_id, response_text)
-                    else:
-                        send_message(sender_id, "I didn't receive a valid image. Please try again.")
-
-                elif "what is" in message_text.lower():
-                    response_text = get_huggingface_question_response(message_text)
-                    send_message(sender_id, response_text)
-
-                else:
-                    send_message(sender_id, "I can only respond to specific commands.")
-
-            user_contexts[sender_id] = context
+                # Store updated context
+                user_contexts[sender_id] = context
 
     return 'OK', 200
-
-def send_gallery_options(recipient_id):
-    options = [
-        "1. Ask a Question",
-        "2. Describe Image"
-    ]
-    send_message(recipient_id, "Choose an option:\n" + "\n".join(options))
 
 def send_message(recipient_id, message_text):
     payload = {
@@ -93,18 +72,27 @@ def send_message(recipient_id, message_text):
     else:
         print(f"Message sent successfully to {recipient_id}: {message_text}")
 
-def get_huggingface_question_response(question):
-    messages = [{"role": "user", "content": question}]
+def send_typing_indicator(recipient_id):
+    payload = {
+        'recipient': {'id': recipient_id},
+        'sender_action': 'typing_on'
+    }
+    requests.post(f'https://graph.facebook.com/v12.0/me/messages?access_token={PAGE_ACCESS_TOKEN}', json=payload)
+    time.sleep(1)  # Simulate typing delay (optional)
+
+def get_huggingface_response(context):
+    # Get only the last user message for response
+    user_input = context['messages'][-1] if context['messages'] else ""
     
     try:
         response = client.chat_completion(
             model="meta-llama/Meta-Llama-3-8B-Instruct",
-            messages=messages,
+            messages=[{"role": "user", "content": user_input}],
             max_tokens=500,
-            stream=True,
+            stream=False
         )
 
-        text = "".join(message.choices[0].delta.content for message in response)
+        text = response.choices[0].message['content'] if response.choices else ""
 
         if not text:
             return "I'm sorry, I couldn't generate a response. Can you please ask something else?"
@@ -114,34 +102,6 @@ def get_huggingface_question_response(question):
         print(f"Error getting response from Hugging Face: {e}")
         return "Sorry, I'm having trouble responding right now."
 
-def get_huggingface_image_response(image_url):
-    messages = [
-        {
-            "role": "user",
-            "content": [
-                {"type": "image_url", "image_url": {"url": image_url}},
-                {"type": "text", "text": "Describe this image in one sentence."},
-            ],
-        }
-    ]
-
-    try:
-        response = client.chat_completion(
-            model="meta-llama/Llama-3.2-11B-Vision-Instruct",
-            messages=messages,
-            max_tokens=500,
-            stream=True,
-        )
-
-        text = "".join(message.choices[0].delta.content for message in response)
-
-        if not text:
-            return "I'm sorry, I couldn't generate a response. Can you please ask something else?"
-
-        return text
-    except Exception as e:
-        print(f"Error getting response from Hugging Face: {e}")
-        return "Sorry, I'm having trouble responding right now."
-
+        
 if __name__ == '__main__':
     app.run(port=5000, debug=True)
