@@ -41,8 +41,12 @@ def webhook():
                 print(f"Received message from {sender_id}: {message_text}")
                 context['messages'].append(message_text)  # Add text message to context
 
+                # Check for "Get Started"
+                if message_text.lower() == "get started":
+                    send_gallery_options(sender_id)
+
                 # Check if the user is asking to describe something
-                if any(phrase in message_text.lower() for phrase in ["describe", "describe this", "can you describe", "tell me about"]):
+                elif any(phrase in message_text.lower() for phrase in ["describe", "describe this", "can you describe", "tell me about"]):
                     if attachments:
                         for attachment in attachments:
                             if attachment['type'] == 'image':
@@ -58,10 +62,6 @@ def webhook():
                 # Handle requests like "describe that" or similar
                 elif "that" in message_text.lower():
                     send_message(sender_id, "I need an image to describe. Please send me an image.")
-
-                # Offer buttons for the user
-                elif "gallery" in message_text.lower():
-                    send_gallery_options(sender_id)
 
                 # Send a response if there was no image
                 elif not attachments:
