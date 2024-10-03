@@ -45,12 +45,13 @@ def webhook():
                 for attachment in attachments:
                     if attachment['type'] == 'image':
                         image_url = attachment['payload']['url']
-                        context['messages'].append(f"[Image]({image_url})")  # Optionally log the image URL
+                        context['messages'].append(f"[Image]({image_url})")  # Log the image URL
                         response_text = get_huggingface_response(context, image_url)
                         send_message(sender_id, response_text)
+                        break  # Exit after processing the first image
 
             # Send a response if there was no image
-            if message_text and not attachments:
+            elif message_text:
                 response_text = get_huggingface_response(context)
                 send_message(sender_id, response_text)
 
