@@ -63,15 +63,29 @@ def send_button_slider(recipient_id):
         'messaging_type': 'RESPONSE',
         'recipient': {'id': recipient_id},
         'message': {
-            'text': "Choose an option:",
-            'quick_replies': [
-                {'content_type': 'text', 'title': 'Ask a Question', 'payload': 'ASK_QUESTION'},
-                {'content_type': 'text', 'title': 'Describe Image', 'payload': 'DESCRIBE_IMAGE'},
-                {'content_type': 'text', 'title': 'Give Feedback', 'payload': 'FEEDBACK'}
-            ]
+            'attachment': {
+                'type': 'template',
+                'payload': {
+                    'template_type': 'button',
+                    'text': "Choose an option:",
+                    'buttons': [
+                        {
+                            'type': 'postback',
+                            'title': 'Ask a Question',
+                            'payload': 'ASK_QUESTION'
+                        },
+                        {
+                            'type': 'postback',
+                            'title': 'Describe Image',
+                            'payload': 'DESCRIBE_IMAGE'
+                        }
+                    ]
+                }
+            }
         }
     }
     send_message_with_typing(recipient_id, payload)
+
 
 def send_typing_indicator(recipient_id):
     requests.post(f'https://graph.facebook.com/v12.0/me/messages?access_token={PAGE_ACCESS_TOKEN}', json={
