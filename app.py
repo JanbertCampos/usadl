@@ -50,8 +50,10 @@ def webhook():
                 context['messages'].append(message_text)  # Add the new message to the context
 
                 # Detect if the user is changing the topic
-                if context['messages'] and context['messages'][-2] != message_text:
-                    context['previous_topics'].append(context['messages'][-2])  # Store the previous topic
+                if context['messages']:
+                    # Only check for the second-to-last message if it exists
+                    if len(context['messages']) > 1 and context['messages'][-2] != message_text:
+                        context['previous_topics'].append(context['messages'][-2])  # Store the previous topic
 
                 # Get response from Gemini API with instructions included
                 response_text = get_gemini_response(context)
@@ -64,6 +66,7 @@ def webhook():
                 user_contexts[sender_id] = context
 
     return 'OK', 200
+
 
 def send_message(recipient_id, message_text):
     max_length = 2000
