@@ -1,8 +1,6 @@
 from flask import Flask, request
 import requests
 import json
-from datetime import datetime
-import pytz
 import os
 
 app = Flask(__name__)
@@ -25,7 +23,7 @@ AI_INSTRUCTIONS = (
     "Always remember that a good laugh is just as important as a good answer!"
 )
 
-# Dictionary to store user conversations
+# Dictionary to store user conversations and topics
 user_contexts = {}
 
 @app.route('/webhook', methods=['GET'])
@@ -48,8 +46,12 @@ def webhook():
                 print(f"Received message from {sender_id}: {message_text}")
 
                 # Retrieve or initialize the conversation context
-                context = user_contexts.get(sender_id, [])
-                context.append(message_text)  # Add the new message to the context
+                context = user_contexts.get(sender_id, {'messages': [], 'previous_topics': []})
+                context['messages'].append(message_text)  # Add the new message to the context
+
+                # Detect if the user is changing the topic
+                if context['messages'] and context['messages'][-2] != message_text:
+                    context['previous_topics'].append(context['messages'][-2])  # Store the previous topic
 
                 # Get response from Gemini API with instructions included
                 response_text = get_gemini_response(context)
@@ -89,8 +91,13 @@ def send_message(recipient_id, message_text):
 
 def get_gemini_response(context):
     # Join the conversation context into a single string
-    user_input = " ".join(context)
+    user_input = " ".join(context['messages'])
     
+    # Optionally include previous topics for context
+    if context['previous_topics']:
+        previous_topics = " Previous topics: " + ", ".join(context['previous_topics'])
+        user_input += previous_topics
+
     try:
         url = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=' + GEMINI_API_KEY
         headers = {
@@ -107,10 +114,6 @@ def get_gemini_response(context):
 
         candidates = api_response.get('candidates', [{}])
         text = candidates[0].get('content', {}).get('parts', [{}])[0].get('text', None)
-
-        safety_ratings = candidates[0].get('safetyRatings', [])
-        if safety_ratings:
-            print(f"Safety Ratings: {safety_ratings}")
 
         if not text:
             return "I'm sorry, I couldn't generate a response. Can you please ask something else?"
