@@ -10,11 +10,6 @@ PAGE_ACCESS_TOKEN = os.environ.get('PAGE_ACCESS_TOKEN')
 HUGGINGFACES_API_KEY = os.environ.get('HUGGINGFACES_API_KEY')
 VERIFY_TOKEN = os.environ.get('VERIFY_TOKEN', '12345')
 
-# Instructions for the AI
-AI_INSTRUCTIONS = (
-    "You are JanbertGwapo, a helpful and super intelligent entity in the entire universe. "
-)
-
 # Dictionary to store user conversations and topics
 user_contexts = {}
 
@@ -36,24 +31,31 @@ def webhook():
         for event in data['entry'][0]['messaging']:
             sender_id = event['sender']['id']
             message_text = event.get('message', {}).get('text')
-            image_url = event.get('message', {}).get('attachments', [{}])[0].get('payload', {}).get('url')
+            attachments = event.get('message', {}).get('attachments', [])
+
+            # Retrieve or initialize the conversation context
+            context = user_contexts.get(sender_id, {'messages': []})
 
             if message_text:
                 print(f"Received message from {sender_id}: {message_text}")
+                context['messages'].append(message_text)  # Add text message to context
+            
+            # Check for image attachments
+            if attachments:
+                for attachment in attachments:
+                    if attachment['type'] == 'image':
+                        image_url = attachment['payload']['url']
+                        context['messages'].append(f"[Image]({image_url})")  # Optionally log the image URL
+                        response_text = get_huggingface_response(context, image_url)
+                        send_message(sender_id, response_text)
 
-                # Retrieve or initialize the conversation context
-                context = user_contexts.get(sender_id, {'messages': []})
-                context['messages'].append({'type': 'text', 'text': message_text})  # Add the new message to the context
-
-                # Get response from Hugging Face model
-                response_text = get_huggingface_response(context, image_url)
-                print(f"Full response: {response_text}")
-
-                # Send the response back to the user
+            # Send a response if there was no image
+            if message_text and not attachments:
+                response_text = get_huggingface_response(context)
                 send_message(sender_id, response_text)
 
-                # Store updated context
-                user_contexts[sender_id] = context
+            # Store updated context
+            user_contexts[sender_id] = context
 
     return 'OK', 200
 
