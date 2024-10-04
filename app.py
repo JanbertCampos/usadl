@@ -1,7 +1,7 @@
 from flask import Flask, request
 import requests
 import os
-from gradio_client import Client
+from huggingface_hub import InferenceClient
 import time
 
 app = Flask(__name__)
@@ -11,11 +11,16 @@ PAGE_ACCESS_TOKEN = os.environ.get('PAGE_ACCESS_TOKEN')
 HUGGINGFACES_API_KEY = os.environ.get('HUGGINGFACES_API_KEY')
 VERIFY_TOKEN = os.environ.get('VERIFY_TOKEN', '12345')
 
-# Initialize the Gradio API client with the Hugging Face API key
-client = Client("yuntian-deng/ChatGPT4Turbo", hf_token=HUGGINGFACES_API_KEY)
+# Instructions for the AI
+AI_INSTRUCTIONS = (
+    "You are JanbertGwapo, a helpful a super intelligent in entire universe. "
+)
 
 # Dictionary to store user conversations and topics
 user_contexts = {}
+
+# Initialize the Hugging Face API client
+client = InferenceClient(api_key=HUGGINGFACES_API_KEY)
 
 @app.route('/webhook', methods=['GET'])
 def verify():
@@ -38,14 +43,14 @@ def webhook():
 
                 # Retrieve or initialize the conversation context
                 context = user_contexts.get(sender_id, {'messages': []})
-                context['messages'].append(message_text)
+                context['messages'].append(message_text)  # Add the new message to the context
 
                 # Send typing indicator
                 send_typing_indicator(sender_id)
 
-                # Get response from ChatGPT API
-                response_text = get_chatgpt_response(message_text)
-                print(f"Response text: {response_text}")
+                # Get response from Hugging Face model
+                response_text = get_huggingface_response(context)
+                print(f"Full response: {response_text}")
 
                 # Send the response back to the user
                 send_message(sender_id, response_text)
@@ -75,21 +80,28 @@ def send_typing_indicator(recipient_id):
     requests.post(f'https://graph.facebook.com/v12.0/me/messages?access_token={PAGE_ACCESS_TOKEN}', json=payload)
     time.sleep(1)  # Simulate typing delay (optional)
 
-def get_chatgpt_response(user_input):
+def get_huggingface_response(context):
+    # Get only the last user message for response
+    user_input = context['messages'][-1] if context['messages'] else ""
+    
     try:
-        result = client.predict(
-            inputs=user_input,
-            top_p=1,
-            temperature=1,
-            chat_counter=0,
-            chatbot=[],
-            api_name="/predict"
+        response = client.chat_completion(
+            model="meta-llama/Meta-Llama-3-8B-Instruct",
+            messages=[{"role": "user", "content": user_input}],
+            max_tokens=500,
+            stream=False
         )
-        print(f"API response: {result}")  # Debugging line
-        return result[0][0] if result and len(result) > 0 else "No valid response received."
+
+        text = response.choices[0].message['content'] if response.choices else ""
+
+        if not text:
+            return "I'm sorry, I couldn't generate a response. Can you please ask something else?"
+
+        return text
     except Exception as e:
-        print(f"Error getting response from ChatGPT: {e}")
+        print(f"Error getting response from Hugging Face: {e}")
         return "Sorry, I'm having trouble responding right now."
 
+        
 if __name__ == '__main__':
     app.run(port=5000, debug=True)
