@@ -85,7 +85,8 @@ def get_chatgpt_response(user_input):
             chatbot=[],  # Adjust if necessary
             api_name="/predict"  # Ensure this matches the endpoint you're using
         )
-        return result[0]  # Assuming the first element is the response text
+        response_text = result[0] if result else "No response from the model."
+        return response_text
     except Exception as e:
         print(f"Error getting response from ChatGPT: {e}")
         return "Sorry, I'm having trouble responding right now."
