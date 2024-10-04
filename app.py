@@ -78,7 +78,7 @@ def get_chatgpt_response(user_input):
     try:
         # Call the predict method with the correct parameters
         result = client.predict(
-            inputs=user_input,
+            user_input,  # Pass the user input directly as the first argument
             top_p=1,
             temperature=1,
             chat_counter=0,
