@@ -81,13 +81,14 @@ def send_typing_indicator(recipient_id):
     time.sleep(1)  # Simulate typing delay (optional)
 
 def get_huggingface_response(context):
-    # Get only the last user message for response
-    user_input = context['messages'][-1] if context['messages'] else ""
-    
+    # Get the last N messages for context
+    user_messages = context['messages'][-10:]  # Adjust the number as needed
+    messages = [{"role": "user", "content": msg} for msg in user_messages]
+
     try:
         response = client.chat_completion(
             model="meta-llama/Meta-Llama-3-8B-Instruct",
-            messages=[{"role": "user", "content": user_input}],
+            messages=messages,
             max_tokens=500,
             stream=False
         )
@@ -101,7 +102,6 @@ def get_huggingface_response(context):
     except Exception as e:
         print(f"Error getting response from Hugging Face: {e}")
         return "Sorry, I'm having trouble responding right now."
-
         
 if __name__ == '__main__':
     app.run(port=5000, debug=True)
