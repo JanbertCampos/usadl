@@ -81,14 +81,14 @@ def get_chatgpt_response(user_input):
             top_p=1,
             temperature=1,
             chat_counter=0,
-            chatbot=[],  # Adjust if necessary
+            chatbot=[],
             api_name="/predict"
         )
-        print(f"API response: {result}")  # Debug statement
+        print(f"API response: {result}")  # Debugging line
         return result[0] if result and len(result) > 0 else "No valid response received."
     except Exception as e:
         print(f"Error getting response from ChatGPT: {e}")
         return "Sorry, I'm having trouble responding right now."
-
+        
 if __name__ == '__main__':
     app.run(port=5000, debug=True)
