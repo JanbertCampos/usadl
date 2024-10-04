@@ -44,7 +44,7 @@ def webhook():
 
                 # Get response from ChatGPT API
                 response_text = get_chatgpt_response(message_text)
-                print(f"Full response: {response_text}")
+                print(f"Response text: {response_text}")
 
                 # Send the response back to the user
                 send_message(sender_id, response_text)
@@ -76,16 +76,16 @@ def send_typing_indicator(recipient_id):
 
 def get_chatgpt_response(user_input):
     try:
-        # Call the predict method with the correct parameters
         result = client.predict(
-            inputs=user_input,  # Pass the user input as the first argument
+            inputs=user_input,
             top_p=1,
             temperature=1,
             chat_counter=0,
             chatbot=[],  # Adjust if necessary
-            api_name="/predict"  # Ensure this matches the endpoint you're using
+            api_name="/predict"
         )
-        return result[0]  # Assuming the first element is the response text
+        print(f"API response: {result}")  # Debug statement
+        return result[0] if result and len(result) > 0 else "No valid response received."
     except Exception as e:
         print(f"Error getting response from ChatGPT: {e}")
         return "Sorry, I'm having trouble responding right now."
