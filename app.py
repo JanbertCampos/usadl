@@ -76,13 +76,14 @@ def send_typing_indicator(recipient_id):
 
 def get_chatgpt_response(user_input):
     try:
+        # Call the predict method with the correct parameters
         result = client.predict(
             inputs=user_input,
             top_p=1,
             temperature=1,
             chat_counter=0,
-            chatbot=[],
-            api_name="/predict"
+            chatbot=[],  # Adjust if necessary
+            api_name="/predict"  # Ensure this matches the endpoint you're using
         )
         return result[0]  # Assuming the first element is the response text
     except Exception as e:
