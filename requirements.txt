@@ -4,4 +4,4 @@ pytz==2023.3
 gunicorn==20.1.0
 Werkzeug==2.2.2
 huggingface_hub
-gradio_client==0.1.0
+gradio_client

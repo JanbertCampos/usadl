@@ -11,7 +11,7 @@ PAGE_ACCESS_TOKEN = os.environ.get('PAGE_ACCESS_TOKEN')
 VERIFY_TOKEN = os.environ.get('VERIFY_TOKEN', '12345')
 
 # Initialize the Gradio API client
-client = Client("yuntian-deng/ChatGPT4Turbo")
+client = Client("yuntian-deng/ChatGPT")
 
 # Dictionary to store user conversations and topics
 user_contexts = {}
@@ -78,15 +78,14 @@ def get_chatgpt_response(user_input):
     try:
         # Call the predict method with the correct parameters
         result = client.predict(
-            user_input,  # Pass the user input directly as the first argument
+            inputs=user_input,  # Pass the user input as the first argument
             top_p=1,
             temperature=1,
             chat_counter=0,
             chatbot=[],  # Adjust if necessary
             api_name="/predict"  # Ensure this matches the endpoint you're using
         )
-        response_text = result[0] if result else "No response from the model."
-        return response_text
+        return result[0]  # Assuming the first element is the response text
     except Exception as e:
         print(f"Error getting response from ChatGPT: {e}")
         return "Sorry, I'm having trouble responding right now."
