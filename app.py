@@ -8,10 +8,11 @@ app = Flask(__name__)
 
 # Replace with your actual tokens
 PAGE_ACCESS_TOKEN = os.environ.get('PAGE_ACCESS_TOKEN')
+HUGGINGFACES_API_KEY = os.environ.get('HUGGINGFACES_API_KEY')
 VERIFY_TOKEN = os.environ.get('VERIFY_TOKEN', '12345')
 
-# Initialize the Gradio API client
-client = Client("yuntian-deng/ChatGPT")
+# Initialize the Gradio API client with the Hugging Face API key
+client = Client("yuntian-deng/ChatGPT4Turbo", hf_token=HUGGINGFACES_API_KEY)
 
 # Dictionary to store user conversations and topics
 user_contexts = {}
@@ -85,10 +86,10 @@ def get_chatgpt_response(user_input):
             api_name="/predict"
         )
         print(f"API response: {result}")  # Debugging line
-        return result[0] if result and len(result) > 0 else "No valid response received."
+        return result[0][0] if result and len(result) > 0 else "No valid response received."
     except Exception as e:
         print(f"Error getting response from ChatGPT: {e}")
         return "Sorry, I'm having trouble responding right now."
-        
+
 if __name__ == '__main__':
     app.run(port=5000, debug=True)
