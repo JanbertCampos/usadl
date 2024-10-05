@@ -43,11 +43,13 @@ def webhook():
 
                 send_typing_indicator(sender_id)
 
-                # Get the response from Hugging Face model
-                response_text = get_huggingface_response(context)
-
-                # Send button template
-                send_button_template(sender_id, response_text)
+                # Check for "Get Started" message
+                if message_text.strip().lower() == "get started":
+                    send_button_template(sender_id, "Welcome! How can I assist you today?")
+                else:
+                    # Get the response from Hugging Face model
+                    response_text = get_huggingface_response(context)
+                    send_button_template(sender_id, response_text)
 
             if image_url:
                 print(f"Received image from {sender_id}: {image_url}")
