@@ -37,6 +37,13 @@ def webhook():
 
             context = user_contexts.get(sender_id, {'messages': []})
 
+            # Handle postback buttons
+            if 'postback' in event.get('message', {}):
+                payload = event['message']['postback']['payload']
+                if payload == "DESCRIBE_IMAGE":
+                    send_message(sender_id, "Please send me the image you'd like to describe.")
+                    continue  # Exit to wait for the image
+
             if message_text:
                 print(f"Received message from {sender_id}: {message_text}")
                 context['messages'].append(message_text)
