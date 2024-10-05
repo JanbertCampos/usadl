@@ -11,7 +11,10 @@ PAGE_ACCESS_TOKEN = os.environ.get('PAGE_ACCESS_TOKEN')
 HUGGINGFACES_API_KEY = os.environ.get('HUGGINGFACES_API_KEY')
 VERIFY_TOKEN = os.environ.get('VERIFY_TOKEN', '12345')
 
+# Dictionary to store user conversations and topics
 user_contexts = {}
+
+# Initialize the Hugging Face API client
 client = InferenceClient(api_key=HUGGINGFACES_API_KEY)
 
 @app.route('/webhook', methods=['GET'])
@@ -34,38 +37,56 @@ def webhook():
 
             context = user_contexts.get(sender_id, {'messages': []})
 
-            response_parts = []
-
             if message_text:
                 print(f"Received message from {sender_id}: {message_text}")
                 context['messages'].append(message_text)
+
                 send_typing_indicator(sender_id)
 
+                # Get the response from Hugging Face model
                 response_text = get_huggingface_response(context)
-                response_parts.append(response_text)
+
+                # Send button template
+                send_button_template(sender_id, response_text)
 
             if image_url:
                 print(f"Received image from {sender_id}: {image_url}")
                 image_response = get_huggingface_image_response(image_url)
-                response_parts.append(image_response)
-
-            # Only send a message if we have responses to combine
-            if response_parts:
-                combined_response = "\n\n".join(response_parts)
-                if context.get('last_response') != combined_response:
-                    send_message(sender_id, combined_response)
-                    context['last_response'] = combined_response
+                send_button_template(sender_id, image_response)
 
             user_contexts[sender_id] = context
 
     return 'OK', 200
 
-def send_message(recipient_id, message_text):
+def send_button_template(recipient_id, message_text):
+    buttons = [
+        {
+            "type": "postback",
+            "title": "Ask a Question",
+            "payload": "ASK_QUESTION"
+        },
+        {
+            "type": "postback",
+            "title": "Describe an Image",
+            "payload": "DESCRIBE_IMAGE"
+        }
+    ]
+    
     payload = {
         'messaging_type': 'RESPONSE',
         'recipient': {'id': recipient_id},
-        'message': {'text': message_text}
+        'message': {
+            'attachment': {
+                'type': 'template',
+                'payload': {
+                    'template_type': 'button',
+                    'text': message_text,
+                    'buttons': buttons
+                }
+            }
+        }
     }
+    
     response = requests.post(f'https://graph.facebook.com/v12.0/me/messages?access_token={PAGE_ACCESS_TOKEN}', json=payload)
     if response.status_code != 200:
         error_message = response.json().get('error', {}).get('message', 'Unknown error occurred.')
@@ -82,7 +103,7 @@ def send_typing_indicator(recipient_id):
         'sender_action': 'typing_on'
     }
     requests.post(f'https://graph.facebook.com/v12.0/me/messages?access_token={PAGE_ACCESS_TOKEN}', json=payload)
-    time.sleep(1)
+    time.sleep(1)  # Simulate typing delay (optional)
 
 def get_huggingface_response(context):
     user_messages = context['messages'][-10:]
