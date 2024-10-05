@@ -43,9 +43,9 @@ def webhook():
             if 'postback' in event:
                 postback_payload = event['postback']['payload']
                 if postback_payload == "ASK_QUESTION":
-                    send_message(sender_id, "Please ask your question.")
+                    send_message(sender_id, MESSAGE_ASK_QUESTION)
                 elif postback_payload == "DESCRIBE_IMAGE":
-                    send_message(sender_id, "Please send me the image you'd like to describe.")
+                    send_message(sender_id, MESSAGE_DESCRIBE_IMAGE)
                 continue  # Skip to the next event
 
             message_text = event.get('message', {}).get('text')
@@ -88,11 +88,9 @@ def send_message(recipient_id, message_text):
         
         if "No matching user found" in error_message:
             print("This user has not interacted with the bot recently; cannot send message.")
-            # Optional: Send a message back to the user instructing them to start a new conversation
-            # You can log this event or notify the admin if needed.
+
     else:
         print(f"Message sent successfully to {recipient_id}: {message_text}")
-
 
 def send_button_template(recipient_id, message_text):
     payload = {
