@@ -60,15 +60,16 @@ def analyze_image(image_url):
             stream=False,  # Set to False to get the complete response at once
         )
 
-        # Check if response is in expected format
+        # Check if response has choices and extract the content
         if hasattr(response, 'choices') and len(response.choices) > 0:
-            return response.choices[0].delta.content.strip()
+            return response.choices[0].message['content'].strip()  # Use 'message' instead of 'delta'
 
         return "I'm sorry, I couldn't generate a description for that image."
 
     except Exception as e:
         print(f"Error analyzing image: {e}")
         return "Sorry, I'm having trouble analyzing that image right now."
+
 
 
 def send_message(recipient_id, message_text):
