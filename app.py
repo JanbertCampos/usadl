@@ -127,6 +127,10 @@ def webhook():
         for event in data['entry'][0]['messaging']:
             sender_id = event['sender']['id']
 
+            # Skip processing if this is an echo message
+            if event.get('message', {}).get('is_echo'):
+                continue
+
             # Check for postback events
             if 'postback' in event:
                 postback_payload = event['postback']['payload']
