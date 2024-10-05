@@ -66,9 +66,13 @@ def webhook():
                 send_typing_indicator(sender_id)
 
                 if context['image_description']:
-                    # Check for follow-up questions about the image
-                    if "details" in message_text or "more" in message_text:
+                    # Handle follow-up questions about the image
+                    if "more details" in message_text or "details" in message_text:
                         send_message(sender_id, "Could you please specify what other details you would like to know about the image?")
+                    elif "error" in message_text:
+                        # Extract relevant error information
+                        error_info = extract_error_info(context['image_description'])
+                        send_message(sender_id, error_info)
                     else:
                         response_text = ask_question(message_text)
                         send_message(sender_id, response_text)
@@ -94,6 +98,15 @@ def webhook():
             user_contexts[sender_id] = context
 
     return 'OK', 200
+
+def extract_error_info(image_description):
+    # Logic to extract specific error information from the description
+    # This could be as simple as returning a predefined message
+    # or parsing the description for specific error details
+    if "error message" in image_description:
+        return "The error message indicates a problem with the server configuration. Please check your server logs for more details."
+    return "I couldn't find specific error details in the description."
+
 
 
 
