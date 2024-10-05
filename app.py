@@ -44,9 +44,8 @@ def webhook():
     return 'OK', 200
 
 def analyze_image(image_url):
-    response_content = ""
     try:
-        for message in client.chat_completion(
+        response = client.chat_completion(
             model="meta-llama/Llama-3.2-11B-Vision-Instruct",
             messages=[
                 {
@@ -59,17 +58,18 @@ def analyze_image(image_url):
             ],
             max_tokens=500,
             stream=False,  # Set to False to get the complete response at once
-        ):
-            response_content = message.choices[0].delta.content
+        )
 
-        if not response_content:
-            return "I'm sorry, I couldn't generate a description for that image."
-        
-        return response_content
+        # Check if response is in expected format
+        if hasattr(response, 'choices') and len(response.choices) > 0:
+            return response.choices[0].delta.content.strip()
+
+        return "I'm sorry, I couldn't generate a description for that image."
 
     except Exception as e:
         print(f"Error analyzing image: {e}")
         return "Sorry, I'm having trouble analyzing that image right now."
+
 
 def send_message(recipient_id, message_text):
     payload = {
