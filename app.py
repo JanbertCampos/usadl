@@ -38,6 +38,16 @@ def webhook():
     if 'messaging' in data['entry'][0]:
         for event in data['entry'][0]['messaging']:
             sender_id = event['sender']['id']
+            
+            # Check for postback events
+            if 'postback' in event:
+                postback_payload = event['postback']['payload']
+                if postback_payload == "ASK_QUESTION":
+                    send_message(sender_id, MESSAGE_ASK_QUESTION)
+                elif postback_payload == "DESCRIBE_IMAGE":
+                    send_message(sender_id, MESSAGE_DESCRIBE_IMAGE)
+                continue  # Skip to the next event
+
             message_text = event.get('message', {}).get('text')
             attachments = event.get('message', {}).get('attachments', [])
             image_url = attachments[0].get('payload', {}).get('url') if attachments else None
@@ -50,27 +60,20 @@ def webhook():
 
                 send_typing_indicator(sender_id)
 
-                # Check for "Get Started" message
-                if message_text.strip().lower() == "get started":
-                    send_button_template(sender_id, MESSAGE_WELCOME)
-                elif message_text.strip().lower() == "ask a question":
-                    send_message(sender_id, MESSAGE_ASK_QUESTION)
-                elif message_text.strip().lower() == "describe an image":
-                    send_message(sender_id, MESSAGE_DESCRIBE_IMAGE)
+                # Process messages or questions
+                if "what" in message_text.lower():  # Simple check for a question
+                    response_text = ask_question(message_text)
+                    send_message(sender_id, response_text)
+                elif image_url:
+                    image_response = describe_image(image_url)
+                    send_message(sender_id, image_response)
                 else:
-                    # Handle user questions or image descriptions
-                    if "what" in message_text.lower():  # Simple check for a question
-                        response_text = ask_question(message_text)
-                        send_message(sender_id, response_text)
-                    elif image_url:
-                        image_response = describe_image(image_url)
-                        send_message(sender_id, image_response)
-                    else:
-                        send_message(sender_id, "I'm not sure how to respond to that. Please try asking a question or saying 'Get Started'.")
+                    send_message(sender_id, "I'm not sure how to respond to that. Please try asking a question or saying 'Get Started'.")
 
             user_contexts[sender_id] = context
 
     return 'OK', 200
+
 
 def send_message(recipient_id, message_text):
     payload = {
