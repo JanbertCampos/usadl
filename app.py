@@ -1,8 +1,7 @@
-from flask import Flask, request
+from flask import Flask, request, jsonify
 import requests
 import os
 from huggingface_hub import InferenceClient
-import time
 
 app = Flask(__name__)
 
@@ -11,137 +10,58 @@ PAGE_ACCESS_TOKEN = os.environ.get('PAGE_ACCESS_TOKEN')
 HUGGINGFACES_API_KEY = os.environ.get('HUGGINGFACES_API_KEY')
 VERIFY_TOKEN = os.environ.get('VERIFY_TOKEN', '12345')
 
-# Instructions for the AI
-AI_INSTRUCTIONS = (
-    "You are JanbertGwapo, a helpful and super intelligent being in the universe. Please be polite and kind."
-)
-
-# Dictionary to store user conversations and contexts
-user_contexts = {}
-
-# Initialize the Hugging Face API client
 client = InferenceClient(api_key=HUGGINGFACES_API_KEY)
 
 @app.route('/webhook', methods=['GET'])
-def verify():
-    if request.args.get('hub.mode') == 'subscribe' and request.args.get('hub.verify_token') == VERIFY_TOKEN:
+def webhook_verify():
+    if request.args.get('hub.verify_token') == VERIFY_TOKEN:
         return request.args.get('hub.challenge')
     return 'Invalid verification token', 403
 
 @app.route('/webhook', methods=['POST'])
 def webhook():
     data = request.get_json()
-    print(f"Incoming data: {data}")
+    if 'object' in data and data['object'] == 'page':
+        for entry in data['entry']:
+            for messaging_event in entry['messaging']:
+                sender_id = messaging_event['sender']['id']
+                if 'message' in messaging_event:
+                    if 'attachments' in messaging_event['message']:
+                        for attachment in messaging_event['message']['attachments']:
+                            if attachment['type'] == 'image':
+                                image_url = attachment['payload']['url']
+                                description = analyze_image(image_url)
+                                send_message(sender_id, description)
+    return 'EVENT_RECEIVED', 200
 
-    if 'messaging' in data['entry'][0]:
-        for event in data['entry'][0]['messaging']:
-            sender_id = event['sender']['id']
-            message_text = event.get('message', {}).get('text')
-
-            if message_text:
-                print(f"Received message from {sender_id}: {message_text}")
-
-                # Retrieve or initialize the conversation context
-                context = user_contexts.get(sender_id, {'messages': []})
-                context['messages'].append(message_text)  # Add the new message to the context
-
-                # Send typing indicator
-                send_typing_indicator(sender_id)
-
-                # Get response from Hugging Face model
-                response_text = get_huggingface_response(context)
-                print(f"Full response: {response_text}")
-
-                # Send the response back to the user
-                send_message(sender_id, response_text)
-
-                # Store updated context
-                user_contexts[sender_id] = context
-
-    return 'OK', 200
+def analyze_image(image_url):
+    response_content = ""
+    for message in client.chat_completion(
+        model="meta-llama/Llama-3.2-11B-Vision-Instruct",
+        messages=[
+            {
+                "role": "user",
+                "content": [
+                    {"type": "image_url", "image_url": {"url": image_url}},
+                    {"type": "text", "text": "Describe this image in one sentence."},
+                ],
+            }
+        ],
+        max_tokens=500,
+        stream=False,
+    ):
+        response_content = message.choices[0].delta.content
+    return response_content
 
 def send_message(recipient_id, message_text):
-    if not recipient_id or not message_text:
-        print("Invalid recipient ID or message text.")
-        return
-
     payload = {
-        'messaging_type': 'RESPONSE',
         'recipient': {'id': recipient_id},
         'message': {'text': message_text}
     }
-    response = requests.post(f'https://graph.facebook.com/v12.0/me/messages?access_token={PAGE_ACCESS_TOKEN}', json=payload)
-
-    if response.status_code != 200:
-        print(f"Failed to send message: {response.text}")
-    else:
-        print(f"Message sent successfully to {recipient_id}: {message_text}")
-
-def send_typing_indicator(recipient_id):
-    payload = {
-        'recipient': {'id': recipient_id},
-        'sender_action': 'typing_on'
-    }
-    requests.post(f'https://graph.facebook.com/v12.0/me/messages?access_token={PAGE_ACCESS_TOKEN}', json=payload)
-    time.sleep(1)  # Simulate typing delay (optional)
-
-def get_huggingface_response(context):
-    messages = []
-    user_messages = context['messages'][-10:]  # Get the last 10 messages
-
-    for msg in user_messages:
-        if "http" in msg:  # Check for image URLs
-            messages.append({
-                "type": "image_url",
-                "image_url": {"url": msg}
-            })
-        else:
-            messages.append({
-                "type": "text",
-                "text": msg
-            })
-
-    # Add instructions to the context for better responses
-    instructions = [{"role": "system", "content": AI_INSTRUCTIONS}]
-    user_input = [{"role": "user", "content": messages}]
-    full_messages = instructions + user_input
-
-    try:
-        response = client.chat_completion(
-            model="meta-llama/Llama-3.2-11B-Vision-Instruct",
-            messages=full_messages,
-            max_tokens=500,
-            stream=False,
-        )
-
-        text = response.choices[0].message['content'] if response.choices else ""
-
-        # Check for empty responses
-        if not text:
-            return "Could you clarify what you need help with?"
-
-        # Limit repetitive fallback responses
-        recent_responses = context.get('recent_responses', [])
-        fallback_count = context.get('fallback_count', 0)
-
-        if text in recent_responses[-3:]:
-            fallback_count += 1
-            if fallback_count >= 3:  # Limit to 3 consecutive fallbacks
-                return "I'm having difficulty understanding. Please try a different question."
-            context['fallback_count'] = fallback_count
-            return "I'm still not sure how to assist you. Could you provide more details?"
-
-        # Reset fallback count if a valid response is received
-        context['fallback_count'] = 0
-
-        # Store the current response in recent responses
-        recent_responses.append(text)
-        context['recent_responses'] = recent_responses[-5:]  # Keep last 5 responses
-
-        return text
-    except Exception as e:
-        print(f"Error getting response from Hugging Face: {e}")
-        return "I'm currently unable to respond to that."
+    requests.post(
+        f'https://graph.facebook.com/v12.0/me/messages?access_token={PAGE_ACCESS_TOKEN}',
+        json=payload
+    )
 
 if __name__ == '__main__':
-    app.run(port=5000, debug=True)
+    app.run(port=5000)
