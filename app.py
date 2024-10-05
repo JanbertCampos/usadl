@@ -1,4 +1,4 @@
-from flask import Flask, request
+from flask import Flask, request, jsonify
 import requests
 import os
 from huggingface_hub import InferenceClient
@@ -56,6 +56,10 @@ def webhook():
 
     return 'OK', 200
 
+@app.route('/', methods=['GET'])
+def home():
+    return "Welcome to the webhook service! Use /webhook for messages."
+
 def analyze_image(image_url):
     try:
         response = client.chat_completion(
@@ -96,7 +100,6 @@ def send_message(recipient_id, message_text):
 
 def extract_image_url(message_text):
     # Implement logic to extract image URL from the message text if necessary
-    # For now, just return None; you can improve this later based on your needs
     return None  # Modify this based on your requirements
 
 def get_huggingface_response(context):
