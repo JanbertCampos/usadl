@@ -11,11 +11,11 @@ PAGE_ACCESS_TOKEN = os.environ.get('PAGE_ACCESS_TOKEN')
 HUGGINGFACES_API_KEY = os.environ.get('HUGGINGFACES_API_KEY')
 VERIFY_TOKEN = os.environ.get('VERIFY_TOKEN', '12345')
 
-# Message templates for button responses
+# Message templates
 MESSAGE_WELCOME = "Welcome! How can I assist you today?"
 MESSAGE_ASK_QUESTION = "What would you like to ask?"
 MESSAGE_DESCRIBE_IMAGE = "Please send me the image you'd like to describe."
-MESSAGE_NO_IMAGE = "I apologize, but I didn't receive any image to analyze. Please share the image first, and then describe the issue you're experiencing."
+MESSAGE_NO_IMAGE = "I apologize, but I didn't receive any image to analyze. Please share the image first."
 MESSAGE_NO_USERS = "It seems I made a mistake! This conversation just started, and we don't have any users yet. Let's start fresh!"
 
 # Dictionary to store user conversations and topics
@@ -44,13 +44,6 @@ def webhook():
 
             context = user_contexts.get(sender_id, {'messages': []})
 
-            # Handle postback buttons
-            if 'postback' in event.get('message', {}):
-                payload = event['message']['postback']['payload']
-                if payload == "DESCRIBE_IMAGE":
-                    send_message(sender_id, MESSAGE_DESCRIBE_IMAGE)
-                    continue
-
             if message_text:
                 print(f"Received message from {sender_id}: {message_text}")
                 context['messages'].append(message_text)
@@ -60,20 +53,20 @@ def webhook():
                 # Check for "Get Started" message
                 if message_text.strip().lower() == "get started":
                     send_button_template(sender_id, MESSAGE_WELCOME)
-                elif "error in image" in message_text.lower():
-                    if image_url:
-                        send_message(sender_id, "I have received the image. Please provide details about the error you are encountering.")
-                    else:
-                        send_message(sender_id, MESSAGE_NO_IMAGE)
+                elif message_text.strip().lower() == "ask a question":
+                    send_message(sender_id, MESSAGE_ASK_QUESTION)
+                elif message_text.strip().lower() == "describe an image":
+                    send_message(sender_id, MESSAGE_DESCRIBE_IMAGE)
                 else:
-                    # Get the response from Hugging Face model
-                    response_text = get_huggingface_response(context)
-                    send_button_template(sender_id, response_text)
-
-            if image_url:
-                print(f"Received image from {sender_id}: {image_url}")
-                image_response = get_huggingface_image_response(image_url)
-                send_button_template(sender_id, image_response)
+                    # Handle user questions or image descriptions
+                    if "what" in message_text.lower():  # Simple check for a question
+                        response_text = ask_question(message_text)
+                        send_message(sender_id, response_text)
+                    elif image_url:
+                        image_response = describe_image(image_url)
+                        send_message(sender_id, image_response)
+                    else:
+                        send_message(sender_id, "I'm not sure how to respond to that. Please try asking a question or saying 'Get Started'.")
 
             user_contexts[sender_id] = context
 
@@ -131,44 +124,38 @@ def send_typing_indicator(recipient_id):
     requests.post(f'https://graph.facebook.com/v12.0/me/messages?access_token={PAGE_ACCESS_TOKEN}', json=payload)
     time.sleep(1)  # Simulate typing delay (optional)
 
-def get_huggingface_response(context):
-    user_messages = context['messages'][-10:]
-    messages = [{"role": "user", "content": msg} for msg in user_messages]
-
+def ask_question(user_question):
     try:
         response = client.chat_completion(
-            model="meta-llama/Meta-Llama-3-8B-Instruct",
-            messages=messages,
+            model="meta-llama/Meta-Llama-3-70B-Instruct",
+            messages=[{"role": "user", "content": user_question}],
             max_tokens=500,
-            stream=False
+            stream=False,
         )
-        text = response.choices[0].message['content'] if response.choices else ""
-        return text if text else "I'm sorry, I couldn't generate a response. Can you please ask something else?"
+        return response.choices[0].message['content'] if response.choices else "I couldn't generate a response."
     except Exception as e:
-        print(f"Error getting response from Hugging Face: {e}")
-        return "Sorry, I'm having trouble responding right now."
+        print(f"Error asking question: {e}")
+        return "Sorry, I'm having trouble answering your question."
 
-def get_huggingface_image_response(image_url):
-    messages = [
-        {
-            "role": "user",
-            "content": [
-                {"type": "image_url", "image_url": {"url": image_url}},
-                {"type": "text", "text": "Describe this image in one sentence."},
-            ],
-        }
-    ]
-
+def describe_image(image_url):
     try:
         response = client.chat_completion(
             model="meta-llama/Llama-3.2-11B-Vision-Instruct",
-            messages=messages,
+            messages=[
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "image_url", "image_url": {"url": image_url}},
+                        {"type": "text", "text": "Describe this image in one sentence."},
+                    ],
+                }
+            ],
             max_tokens=500,
             stream=False,
         )
         return response.choices[0].message['content'] if response.choices else "I couldn't analyze the image."
     except Exception as e:
-        print(f"Error getting image response from Hugging Face: {e}")
+        print(f"Error describing image: {e}")
         return "Sorry, I couldn't analyze the image."
 
 if __name__ == '__main__':
