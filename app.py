@@ -42,7 +42,7 @@ def webhook():
                 payload = event['message']['postback']['payload']
                 if payload == "DESCRIBE_IMAGE":
                     send_message(sender_id, "Please send me the image you'd like to describe.")
-                    continue  # Exit to wait for the image
+                    continue
 
             if message_text:
                 print(f"Received message from {sender_id}: {message_text}")
@@ -53,6 +53,11 @@ def webhook():
                 # Check for "Get Started" message
                 if message_text.strip().lower() == "get started":
                     send_button_template(sender_id, "Welcome! How can I assist you today?")
+                elif "error in image" in message_text.lower():
+                    if image_url:
+                        send_message(sender_id, "I have received the image. Please provide details about the error you are encountering.")
+                    else:
+                        send_message(sender_id, "I apologize, but I didn't receive any image to analyze. Please share the image first, and then describe the issue you're experiencing.")
                 else:
                     # Get the response from Hugging Face model
                     response_text = get_huggingface_response(context)
@@ -67,35 +72,12 @@ def webhook():
 
     return 'OK', 200
 
-def send_button_template(recipient_id, message_text):
-    buttons = [
-        {
-            "type": "postback",
-            "title": "Ask a Question",
-            "payload": "ASK_QUESTION"
-        },
-        {
-            "type": "postback",
-            "title": "Describe an Image",
-            "payload": "DESCRIBE_IMAGE"
-        }
-    ]
-    
+def send_message(recipient_id, message_text):
     payload = {
         'messaging_type': 'RESPONSE',
         'recipient': {'id': recipient_id},
-        'message': {
-            'attachment': {
-                'type': 'template',
-                'payload': {
-                    'template_type': 'button',
-                    'text': message_text,
-                    'buttons': buttons
-                }
-            }
-        }
+        'message': {'text': message_text}
     }
-    
     response = requests.post(f'https://graph.facebook.com/v12.0/me/messages?access_token={PAGE_ACCESS_TOKEN}', json=payload)
     if response.status_code != 200:
         error_message = response.json().get('error', {}).get('message', 'Unknown error occurred.')
@@ -105,6 +87,34 @@ def send_button_template(recipient_id, message_text):
             print("This user has not interacted with the bot recently; cannot send message.")
     else:
         print(f"Message sent successfully to {recipient_id}: {message_text}")
+
+def send_button_template(recipient_id, message_text):
+    payload = {
+        'messaging_type': 'RESPONSE',
+        'recipient': {'id': recipient_id},
+        'message': {
+            'attachment': {
+                'type': 'template',
+                'payload': {
+                    'template_type': 'button',
+                    'text': message_text,
+                    'buttons': [
+                        {
+                            "type": "postback",
+                            "title": "Ask a Question",
+                            "payload": "ASK_QUESTION"
+                        },
+                        {
+                            "type": "postback",
+                            "title": "Describing an Image",
+                            "payload": "DESCRIBE_IMAGE"
+                        }
+                    ]
+                }
+            }
+        }
+    }
+    requests.post(f'https://graph.facebook.com/v12.0/me/messages?access_token={PAGE_ACCESS_TOKEN}', json=payload)
 
 def send_typing_indicator(recipient_id):
     payload = {
