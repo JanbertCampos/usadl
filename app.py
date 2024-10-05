@@ -11,6 +11,13 @@ PAGE_ACCESS_TOKEN = os.environ.get('PAGE_ACCESS_TOKEN')
 HUGGINGFACES_API_KEY = os.environ.get('HUGGINGFACES_API_KEY')
 VERIFY_TOKEN = os.environ.get('VERIFY_TOKEN', '12345')
 
+# Message templates for button responses
+MESSAGE_WELCOME = "Welcome! How can I assist you today?"
+MESSAGE_ASK_QUESTION = "What would you like to ask?"
+MESSAGE_DESCRIBE_IMAGE = "Please send me the image you'd like to describe."
+MESSAGE_NO_IMAGE = "I apologize, but I didn't receive any image to analyze. Please share the image first, and then describe the issue you're experiencing."
+MESSAGE_NO_USERS = "It seems I made a mistake! This conversation just started, and we don't have any users yet. Let's start fresh!"
+
 # Dictionary to store user conversations and topics
 user_contexts = {}
 
@@ -41,7 +48,7 @@ def webhook():
             if 'postback' in event.get('message', {}):
                 payload = event['message']['postback']['payload']
                 if payload == "DESCRIBE_IMAGE":
-                    send_message(sender_id, "Please send me the image you'd like to describe.")
+                    send_message(sender_id, MESSAGE_DESCRIBE_IMAGE)
                     continue
 
             if message_text:
@@ -52,12 +59,12 @@ def webhook():
 
                 # Check for "Get Started" message
                 if message_text.strip().lower() == "get started":
-                    send_button_template(sender_id, "Welcome! How can I assist you today?")
+                    send_button_template(sender_id, MESSAGE_WELCOME)
                 elif "error in image" in message_text.lower():
                     if image_url:
                         send_message(sender_id, "I have received the image. Please provide details about the error you are encountering.")
                     else:
-                        send_message(sender_id, "I apologize, but I didn't receive any image to analyze. Please share the image first, and then describe the issue you're experiencing.")
+                        send_message(sender_id, MESSAGE_NO_IMAGE)
                 else:
                     # Get the response from Hugging Face model
                     response_text = get_huggingface_response(context)
