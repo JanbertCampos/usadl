@@ -50,34 +50,45 @@ def get_response_based_on_message(sender_id, message_text, image_url):
     """Get a response based on the message or image."""
     # Initialize user context if it doesn't exist
     if sender_id not in user_contexts:
-        user_contexts[sender_id] = {'image_description': None}
+        user_contexts[sender_id] = {'image_description': None, 'conversation_history': []}
 
     if image_url:
         # Analyze the image and store the description
         description = analyze_image(image_url)
         user_contexts[sender_id]['image_description'] = description
+        user_contexts[sender_id]['conversation_history'].append(f"Image description: {description}")
         return description
     elif message_text:
-        # Respond to follow-up questions based on the stored image description
-        image_description = user_contexts[sender_id].get('image_description')
-        if image_description:
-            return handle_follow_up_question(message_text, image_description)
-        return "I didn't understand that."
+        # Add the user message to conversation history
+        user_contexts[sender_id]['conversation_history'].append(f"You: {message_text}")
+        response = generate_response(user_contexts[sender_id]['conversation_history'])
+        return response
 
     return "I received your message but need to process it further."
 
-def handle_follow_up_question(question, image_description):
-    """Handle follow-up questions about the image."""
-    if "color" in question.lower():
-        # You can parse the description for colors or give a default answer
-        return "The main color I see is navy blue."
-    elif "what mostly code" in question.lower():
-        # You can customize responses based on known descriptions
-        return "The code is primarily JavaScript, PHP, and HTML."
-    # Add more conditions for different types of follow-up questions
-    return "I'm not sure how to answer that. Can you ask something else?"
+def generate_response(conversation_history):
+    """Generate a response based on the conversation history."""
+    # Join the conversation history and ask the AI for a response
+    history = "\n".join(conversation_history)
+    try:
+        response = client.chat_completion(
+            model="meta-llama/Llama-3.2-11B-Vision-Instruct",
+            messages=[{"role": "user", "content": history}],
+            max_tokens=500,
+            stream=False,
+        )
+
+        if hasattr(response, 'choices') and len(response.choices) > 0:
+            return response.choices[0].message['content'].strip()
+
+        return "I'm sorry, I couldn't generate a response."
+
+    except Exception as e:
+        print(f"Error generating response: {e}")
+        return "Sorry, I'm having trouble processing that right now."
 
 def analyze_image(image_url):
+    """Analyze the image and return a description."""
     try:
         response = client.chat_completion(
             model="meta-llama/Llama-3.2-11B-Vision-Instruct",
@@ -86,7 +97,7 @@ def analyze_image(image_url):
                     "role": "user",
                     "content": [
                         {"type": "image_url", "image_url": {"url": image_url}},
-                        {"type": "text", "text": "Describe this image in one sentence."},
+                        {"type": "text", "text": "Describe this image."},
                     ],
                 }
             ],
@@ -95,9 +106,7 @@ def analyze_image(image_url):
         )
 
         if hasattr(response, 'choices') and len(response.choices) > 0:
-            description = response.choices[0].message['content'].strip()
-            print(f"Image description: {description}")
-            return description
+            return response.choices[0].message['content'].strip()
 
         return "I'm sorry, I couldn't generate a description for that image."
 
