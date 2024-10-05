@@ -32,33 +32,35 @@ def webhook():
         for event in data['entry'][0]['messaging']:
             sender_id = event['sender']['id']
             message_text = event.get('message', {}).get('text')
+            image_url = None
 
+            if 'attachments' in event['message']:
+                for attachment in event['message']['attachments']:
+                    if attachment['type'] == 'image':
+                        image_url = attachment['payload']['url']
+
+            # Handle text messages or image attachments
             if message_text:
                 print(f"Received message from {sender_id}: {message_text}")
-
-                # Retrieve or initialize the conversation context
-                context = user_contexts.get(sender_id, {'messages': []})
-                context['messages'].append(message_text)  # Add the new message to the context
-
-                # Check if the message is a follow-up question
-                if "how" in message_text.lower():
-                    response_text = get_huggingface_response(context)
-                else:
-                    image_url = extract_image_url(message_text)  # Implement this function to extract image URL
-                    if image_url:
-                        response_text = analyze_image(image_url)
-                    else:
-                        response_text = "I'm not sure how to respond to that."
-
-                print(f"Response: {response_text}")
+                response_text = get_response_based_on_message(sender_id, message_text, image_url)
                 send_message(sender_id, response_text)
-                user_contexts[sender_id] = context
 
     return 'OK', 200
 
 @app.route('/', methods=['GET'])
 def home():
     return "Welcome to the webhook service! Use /webhook for messages."
+
+def get_response_based_on_message(sender_id, message_text, image_url):
+    context = user_contexts.get(sender_id, {'messages': []})
+    context['messages'].append(message_text)
+
+    if image_url:
+        return analyze_image(image_url)
+    elif "describe this image" in message_text.lower():
+        return "Please provide an image for me to describe."
+    else:
+        return "I didn't quite understand that. Can you please clarify?"
 
 def analyze_image(image_url):
     try:
@@ -78,7 +80,7 @@ def analyze_image(image_url):
         )
 
         if hasattr(response, 'choices') and len(response.choices) > 0:
-            return response.choices[0].message['content'].strip()  # Use 'message' instead of 'delta'
+            return response.choices[0].message['content'].strip()
 
         return "I'm sorry, I couldn't generate a description for that image."
 
@@ -87,43 +89,19 @@ def analyze_image(image_url):
         return "Sorry, I'm having trouble analyzing that image right now."
 
 def send_message(recipient_id, message_text):
-    payload = {
-        'messaging_type': 'RESPONSE',
-        'recipient': {'id': recipient_id},
-        'message': {'text': message_text}
-    }
-    response = requests.post(f'https://graph.facebook.com/v12.0/me/messages?access_token={PAGE_ACCESS_TOKEN}', json=payload)
-    if response.status_code != 200:
-        print(f"Failed to send message: {response.text}")
+    if recipient_id in user_contexts:  # Check if the user context exists
+        payload = {
+            'messaging_type': 'RESPONSE',
+            'recipient': {'id': recipient_id},
+            'message': {'text': message_text}
+        }
+        response = requests.post(f'https://graph.facebook.com/v12.0/me/messages?access_token={PAGE_ACCESS_TOKEN}', json=payload)
+        if response.status_code != 200:
+            print(f"Failed to send message: {response.text}")
+        else:
+            print(f"Message sent successfully to {recipient_id}: {message_text}")
     else:
-        print(f"Message sent successfully to {recipient_id}: {message_text}")
-
-def extract_image_url(message_text):
-    # Implement logic to extract image URL from the message text if necessary
-    return None  # Modify this based on your requirements
-
-def get_huggingface_response(context):
-    # Get the last N messages for context
-    user_messages = context['messages'][-10:]  # Adjust the number as needed
-    messages = [{"role": "user", "content": msg} for msg in user_messages]
-
-    try:
-        response = client.chat_completion(
-            model="meta-llama/Llama-3.2-11B-Vision-Instruct",
-            messages=messages,
-            max_tokens=500,
-            stream=False
-        )
-
-        text = response.choices[0].message['content'] if response.choices else ""
-
-        if not text:
-            return "I'm sorry, I couldn't generate a response. Can you please ask something else?"
-
-        return text
-    except Exception as e:
-        print(f"Error getting response from Hugging Face: {e}")
-        return "Sorry, I'm having trouble responding right now."
+        print(f"No valid recipient found for user ID: {recipient_id}")
 
 if __name__ == '__main__':
     app.run(port=5000, debug=True)
