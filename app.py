@@ -14,6 +14,9 @@ VERIFY_TOKEN = os.environ.get('VERIFY_TOKEN', '12345')
 # Initialize the Hugging Face API client
 client = InferenceClient(api_key=HUGGINGFACES_API_KEY)
 
+# Dictionary to store user conversations and topics
+user_contexts = {}
+
 @app.route('/webhook', methods=['GET'])
 def verify():
     if request.args.get('hub.mode') == 'subscribe' and request.args.get('hub.verify_token') == VERIFY_TOKEN:
@@ -34,15 +37,28 @@ def webhook():
             if message_text or image_url:
                 print(f"Received message from {sender_id}: {message_text if message_text else image_url}")
 
+                # Retrieve or initialize the conversation context
+                context = user_contexts.get(sender_id, {'messages': []})
+
+                # Update context with the new message
+                if message_text:
+                    context['messages'].append({"role": "user", "content": message_text})
+
+                if image_url:
+                    context['messages'].append({"role": "user", "content": {"type": "image_url", "image_url": {"url": image_url}}})
+
                 # Send typing indicator
                 send_typing_indicator(sender_id)
 
                 # Get response from Hugging Face model
-                response_text = get_huggingface_response(message_text, image_url)
+                response_text = get_huggingface_response(context)
                 print(f"Full response: {response_text}")
 
                 # Send the response back to the user
                 send_message(sender_id, response_text)
+
+                # Store updated context
+                user_contexts[sender_id] = context
 
     return 'OK', 200
 
@@ -66,19 +82,13 @@ def send_typing_indicator(recipient_id):
     requests.post(f'https://graph.facebook.com/v12.0/me/messages?access_token={PAGE_ACCESS_TOKEN}', json=payload)
     time.sleep(1)  # Simulate typing delay (optional)
 
-def get_huggingface_response(message_text, image_url):
-    messages = []
-
-    if image_url:
-        messages.append({"type": "image_url", "image_url": {"url": image_url}})
-    
-    if message_text:
-        messages.append({"type": "text", "text": message_text})
+def get_huggingface_response(context):
+    messages = context['messages'][-10:]  # Get the last N messages for context
 
     try:
         response = client.chat_completion(
             model="meta-llama/Llama-3.2-11B-Vision-Instruct",
-            messages=[{"role": "user", "content": messages}],
+            messages=messages,
             max_tokens=500,
             stream=False
         )
