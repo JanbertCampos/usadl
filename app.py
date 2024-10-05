@@ -11,11 +11,16 @@ PAGE_ACCESS_TOKEN = os.environ.get('PAGE_ACCESS_TOKEN')
 HUGGINGFACES_API_KEY = os.environ.get('HUGGINGFACES_API_KEY')
 VERIFY_TOKEN = os.environ.get('VERIFY_TOKEN', '12345')
 
-# Initialize the Hugging Face API client
-client = InferenceClient(api_key=HUGGINGFACES_API_KEY)
+# Instructions for the AI
+AI_INSTRUCTIONS = (
+    "You are JanbertGwapo, a helpful a super intelligent in entire universe and also be polite and kind. "
+)
 
 # Dictionary to store user conversations and topics
 user_contexts = {}
+
+# Initialize the Hugging Face API client
+client = InferenceClient(api_key=HUGGINGFACES_API_KEY)
 
 @app.route('/webhook', methods=['GET'])
 def verify():
@@ -32,20 +37,13 @@ def webhook():
         for event in data['entry'][0]['messaging']:
             sender_id = event['sender']['id']
             message_text = event.get('message', {}).get('text')
-            image_url = event.get('message', {}).get('attachments', [{}])[0].get('payload', {}).get('url')
 
-            if message_text or image_url:
-                print(f"Received message from {sender_id}: {message_text if message_text else image_url}")
+            if message_text:
+                print(f"Received message from {sender_id}: {message_text}")
 
                 # Retrieve or initialize the conversation context
                 context = user_contexts.get(sender_id, {'messages': []})
-
-                # Update context with the new message
-                if message_text:
-                    context['messages'].append({"role": "user", "content": message_text})
-
-                if image_url:
-                    context['messages'].append({"role": "user", "content": {"type": "image_url", "image_url": {"url": image_url}}})
+                context['messages'].append(message_text)  # Add the new message to the context
 
                 # Send typing indicator
                 send_typing_indicator(sender_id)
@@ -83,11 +81,13 @@ def send_typing_indicator(recipient_id):
     time.sleep(1)  # Simulate typing delay (optional)
 
 def get_huggingface_response(context):
-    messages = context['messages'][-10:]  # Get the last N messages for context
+    # Get the last N messages for context
+    user_messages = context['messages'][-10:]  # Adjust the number as needed
+    messages = [{"role": "user", "content": msg} for msg in user_messages]
 
     try:
         response = client.chat_completion(
-            model="meta-llama/Llama-3.2-11B-Vision-Instruct",
+            model="meta-llama/Meta-Llama-3-70B-Instruct",
             messages=messages,
             max_tokens=500,
             stream=False
@@ -102,6 +102,6 @@ def get_huggingface_response(context):
     except Exception as e:
         print(f"Error getting response from Hugging Face: {e}")
         return "Sorry, I'm having trouble responding right now."
-
+        
 if __name__ == '__main__':
     app.run(port=5000, debug=True)
