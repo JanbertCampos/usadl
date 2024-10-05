@@ -81,14 +81,18 @@ def send_message(recipient_id, message_text):
         'message': {'text': message_text}
     }
     response = requests.post(f'https://graph.facebook.com/v12.0/me/messages?access_token={PAGE_ACCESS_TOKEN}', json=payload)
+    
     if response.status_code != 200:
         error_message = response.json().get('error', {}).get('message', 'Unknown error occurred.')
         print(f"Failed to send message: {error_message}")
         
         if "No matching user found" in error_message:
             print("This user has not interacted with the bot recently; cannot send message.")
+            # Optional: Send a message back to the user instructing them to start a new conversation
+            # You can log this event or notify the admin if needed.
     else:
         print(f"Message sent successfully to {recipient_id}: {message_text}")
+
 
 def send_button_template(recipient_id, message_text):
     payload = {
