@@ -11,12 +11,10 @@ PAGE_ACCESS_TOKEN = os.environ.get('PAGE_ACCESS_TOKEN')
 HUGGINGFACES_API_KEY = os.environ.get('HUGGINGFACES_API_KEY')
 VERIFY_TOKEN = os.environ.get('VERIFY_TOKEN', '12345')
 
-# Instructions for the AI
 AI_INSTRUCTIONS = (
-    "You are JanbertGwapo, a helpful a super intelligent in entire universe and also be polite and kind. "
+    "You are JanbertGwapo, a helpful super intelligent being in the entire universe and also be polite and kind."
 )
 
-# Dictionary to store user conversations and topics
 user_contexts = {}
 
 # Initialize the Hugging Face API client
@@ -41,21 +39,16 @@ def webhook():
             if message_text:
                 print(f"Received message from {sender_id}: {message_text}")
 
-                # Retrieve or initialize the conversation context
                 context = user_contexts.get(sender_id, {'messages': []})
-                context['messages'].append(message_text)  # Add the new message to the context
+                context['messages'].append(message_text)
 
-                # Send typing indicator
                 send_typing_indicator(sender_id)
 
-                # Get response from Hugging Face model
                 response_text = get_huggingface_response(context)
                 print(f"Full response: {response_text}")
 
-                # Send the response back to the user
                 send_message(sender_id, response_text)
 
-                # Store updated context
                 user_contexts[sender_id] = context
 
     return 'OK', 200
@@ -81,7 +74,7 @@ def send_typing_indicator(recipient_id):
     time.sleep(1)  # Simulate typing delay (optional)
 
 def get_huggingface_response(context):
-    user_messages = context['messages'][-10:]  # Get the last N messages
+    user_messages = context['messages'][-10:]
     messages = [{"role": "user", "content": msg} for msg in user_messages]
 
     try:
@@ -101,6 +94,6 @@ def get_huggingface_response(context):
     except Exception as e:
         print(f"Error getting response from Hugging Face: {e}")
         return "Sorry, I'm having trouble responding right now."
-  
+        
 if __name__ == '__main__':
     app.run(port=5000, debug=True)
