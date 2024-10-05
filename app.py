@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify
+from flask import Flask, request
 import requests
 import os
 from huggingface_hub import InferenceClient
@@ -9,9 +9,6 @@ app = Flask(__name__)
 PAGE_ACCESS_TOKEN = os.environ.get('PAGE_ACCESS_TOKEN')
 HUGGINGFACES_API_KEY = os.environ.get('HUGGINGFACES_API_KEY')
 VERIFY_TOKEN = os.environ.get('VERIFY_TOKEN', '12345')
-
-# Dictionary to store user conversations and contexts
-user_contexts = {}
 
 # Initialize the Hugging Face API client
 client = InferenceClient(api_key=HUGGINGFACES_API_KEY)
@@ -25,7 +22,6 @@ def verify():
 
 @app.route('/webhook', methods=['POST'])
 def webhook():
-    """Handle incoming messages from Facebook Messenger."""
     data = request.get_json()
     print(f"Incoming data: {data}")
 
@@ -33,43 +29,30 @@ def webhook():
         for event in data['entry'][0]['messaging']:
             sender_id = event['sender']['id']
             message_text = event.get('message', {}).get('text')
-            image_url = extract_image_url(event)
+            image_url = None
+
+            if 'attachments' in event['message']:
+                for attachment in event['message']['attachments']:
+                    if attachment['type'] == 'image':
+                        image_url = attachment['payload']['url']
+                        print(f"Image detected: {image_url}")
 
             # Handle text messages or image attachments
-            if message_text:
-                print(f"Received message from {sender_id}: {message_text}")
+            if message_text or image_url:
                 response_text = get_response_based_on_message(sender_id, message_text, image_url)
                 send_message(sender_id, response_text)
 
     return 'OK', 200
 
-@app.route('/', methods=['GET'])
-def home():
-    """Home route."""
-    return "Welcome to the webhook service! Use /webhook for messages."
-
-def extract_image_url(event):
-    """Extract image URL from the event."""
-    if 'attachments' in event['message']:
-        for attachment in event['message']['attachments']:
-            if attachment['type'] == 'image':
-                return attachment['payload']['url']
-    return None
-
 def get_response_based_on_message(sender_id, message_text, image_url):
-    """Generate a response based on the user's message or image."""
-    context = user_contexts.setdefault(sender_id, {'messages': []})
-    context['messages'].append(message_text)
-
+    """Get a response based on the message or image."""
     if image_url:
         return analyze_image(image_url)
-    elif "describe this image" in message_text.lower():
-        return "Please provide an image for me to describe."
-    else:
-        return "I didn't quite understand that. Can you please clarify?"
+    elif message_text:
+        return "I received your message but need to process it further."
+    return "I didn't understand that."
 
 def analyze_image(image_url):
-    """Analyze the image using the Hugging Face API."""
     try:
         response = client.chat_completion(
             model="meta-llama/Llama-3.2-11B-Vision-Instruct",
@@ -87,7 +70,9 @@ def analyze_image(image_url):
         )
 
         if hasattr(response, 'choices') and len(response.choices) > 0:
-            return response.choices[0].message['content'].strip()
+            description = response.choices[0].message['content'].strip()
+            print(f"Image description: {description}")
+            return description
 
         return "I'm sorry, I couldn't generate a description for that image."
 
