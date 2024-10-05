@@ -2,7 +2,6 @@ from flask import Flask, request, jsonify
 import requests
 import os
 from huggingface_hub import InferenceClient
-import time
 
 app = Flask(__name__)
 
@@ -19,12 +18,14 @@ client = InferenceClient(api_key=HUGGINGFACES_API_KEY)
 
 @app.route('/webhook', methods=['GET'])
 def verify():
+    """Verify the webhook for Facebook Messenger."""
     if request.args.get('hub.mode') == 'subscribe' and request.args.get('hub.verify_token') == VERIFY_TOKEN:
         return request.args.get('hub.challenge')
     return 'Invalid verification token', 403
 
 @app.route('/webhook', methods=['POST'])
 def webhook():
+    """Handle incoming messages from Facebook Messenger."""
     data = request.get_json()
     print(f"Incoming data: {data}")
 
@@ -32,12 +33,7 @@ def webhook():
         for event in data['entry'][0]['messaging']:
             sender_id = event['sender']['id']
             message_text = event.get('message', {}).get('text')
-            image_url = None
-
-            if 'attachments' in event['message']:
-                for attachment in event['message']['attachments']:
-                    if attachment['type'] == 'image':
-                        image_url = attachment['payload']['url']
+            image_url = extract_image_url(event)
 
             # Handle text messages or image attachments
             if message_text:
@@ -49,10 +45,20 @@ def webhook():
 
 @app.route('/', methods=['GET'])
 def home():
+    """Home route."""
     return "Welcome to the webhook service! Use /webhook for messages."
 
+def extract_image_url(event):
+    """Extract image URL from the event."""
+    if 'attachments' in event['message']:
+        for attachment in event['message']['attachments']:
+            if attachment['type'] == 'image':
+                return attachment['payload']['url']
+    return None
+
 def get_response_based_on_message(sender_id, message_text, image_url):
-    context = user_contexts.get(sender_id, {'messages': []})
+    """Generate a response based on the user's message or image."""
+    context = user_contexts.setdefault(sender_id, {'messages': []})
     context['messages'].append(message_text)
 
     if image_url:
@@ -63,6 +69,7 @@ def get_response_based_on_message(sender_id, message_text, image_url):
         return "I didn't quite understand that. Can you please clarify?"
 
 def analyze_image(image_url):
+    """Analyze the image using the Hugging Face API."""
     try:
         response = client.chat_completion(
             model="meta-llama/Llama-3.2-11B-Vision-Instruct",
@@ -89,19 +96,18 @@ def analyze_image(image_url):
         return "Sorry, I'm having trouble analyzing that image right now."
 
 def send_message(recipient_id, message_text):
-    if recipient_id in user_contexts:  # Check if the user context exists
-        payload = {
-            'messaging_type': 'RESPONSE',
-            'recipient': {'id': recipient_id},
-            'message': {'text': message_text}
-        }
-        response = requests.post(f'https://graph.facebook.com/v12.0/me/messages?access_token={PAGE_ACCESS_TOKEN}', json=payload)
-        if response.status_code != 200:
-            print(f"Failed to send message: {response.text}")
-        else:
-            print(f"Message sent successfully to {recipient_id}: {message_text}")
+    """Send a message back to the user."""
+    payload = {
+        'messaging_type': 'RESPONSE',
+        'recipient': {'id': recipient_id},
+        'message': {'text': message_text}
+    }
+    response = requests.post(f'https://graph.facebook.com/v12.0/me/messages?access_token={PAGE_ACCESS_TOKEN}', json=payload)
+
+    if response.status_code != 200:
+        print(f"Failed to send message: {response.text}")
     else:
-        print(f"No valid recipient found for user ID: {recipient_id}")
+        print(f"Message sent successfully to {recipient_id}: {message_text}")
 
 if __name__ == '__main__':
     app.run(port=5000, debug=True)
