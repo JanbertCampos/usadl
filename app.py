@@ -30,6 +30,94 @@ def verify():
         return request.args.get('hub.challenge')
     return 'Invalid verification token', 403
 
+def send_message(recipient_id: str, message_text: str) -> None:
+    payload = {
+        'messaging_type': 'RESPONSE',
+        'recipient': {'id': recipient_id},
+        'message': {'text': message_text}
+    }
+    response = requests.post(f'https://graph.facebook.com/v12.0/me/messages?access_token={PAGE_ACCESS_TOKEN}', json=payload)
+    
+    if response.status_code != 200:
+        error_message = response.json().get('error', {}).get('message', 'Unknown error occurred.')
+        print(f"Failed to send message: {error_message}")
+        
+        if "No matching user found" in error_message:
+            print("This user has not interacted with the bot recently; cannot send message.")
+    else:
+        print(f"Message sent successfully to {recipient_id}: {message_text}")
+
+def send_button_template(recipient_id: str, message_text: str) -> None:
+    payload = {
+        'messaging_type': 'RESPONSE',
+        'recipient': {'id': recipient_id},
+        'message': {
+            'attachment': {
+                'type': 'template',
+                'payload': {
+                    'template_type': 'button',
+                    'text': message_text,
+                    'buttons': [
+                        {
+                            "type": "postback",
+                            "title": "Ask a Question",
+                            "payload": "ASK_QUESTION"
+                        },
+                        {
+                            "type": "postback",
+                            "title": "Describing an Image",
+                            "payload": "DESCRIBE_IMAGE"
+                        }
+                    ]
+                }
+            }
+        }
+    }
+    requests.post(f'https://graph.facebook.com/v12.0/me/messages?access_token={PAGE_ACCESS_TOKEN}', json=payload)
+
+def send_typing_indicator(recipient_id: str) -> None:
+    payload = {
+        'recipient': {'id': recipient_id},
+        'sender_action': 'typing_on'
+    }
+    requests.post(f'https://graph.facebook.com/v12.0/me/messages?access_token={PAGE_ACCESS_TOKEN}', json=payload)
+    time.sleep(1)  # Simulate typing delay (optional)
+
+def ask_question(user_question: str) -> str:
+    try:
+        response = client.chat_completion(
+            model="meta-llama/Meta-Llama-3-70B-Instruct",
+            messages=[{"role": "user", "content": user_question}],
+            max_tokens=500,
+            stream=False,
+        )
+        return response.choices[0].message['content'] if response.choices else "I couldn't generate a response."
+    except Exception as e:
+        print(f"Error asking question: {e}")
+        return "Sorry, I'm having trouble answering your question."
+
+def describe_image(image_url: str, user_question: str = None) -> str:
+    try:
+        messages = [
+            {"type": "image_url", "image_url": {"url": image_url}},
+            {"type": "text", "text": "Describe this image in one sentence."}
+        ]
+        
+        # If there's a user question, include it in the messages
+        if user_question:
+            messages.append({"type": "text", "text": user_question})
+
+        response = client.chat_completion(
+            model="meta-llama/Llama-3.2-11B-Vision-Instruct",
+            messages=[{"role": "user", "content": messages}],
+            max_tokens=500,
+            stream=False,
+        )
+        return response.choices[0].message['content'] if response.choices else "I couldn't analyze the image."
+    except Exception as e:
+        print(f"Error describing image: {e}")
+        return "Sorry, I couldn't analyze the image."
+
 @app.route('/webhook', methods=['POST'])
 def webhook():
     data = request.get_json()
@@ -65,108 +153,24 @@ def webhook():
 
                 send_typing_indicator(sender_id)
 
-                # Process user questions
-                response_text = ask_question(message_text)
-                send_message(sender_id, response_text)
-
-            # Handle image attachments
-            if attachments:
-                image_url = attachments[0].get('payload', {}).get('url')
-                if image_url:
-                    image_response = describe_image(image_url)
-                    context['image_description'] = image_response
-                    context['image_url'] = image_url
-                    send_message(sender_id, image_response)
+                # Handle follow-up questions about the image
+                if context['image_url']:
+                    if "details" in message_text or "what" in message_text:  # Catch all for follow-up questions
+                        image_response = describe_image(context['image_url'], message_text)
+                        send_message(sender_id, image_response)
+                    else:
+                        response_text = ask_question(message_text)
+                        send_message(sender_id, response_text)
                 else:
-                    send_message(sender_id, MESSAGE_NO_IMAGE)
+                    # Handle the first question or image request
+                    if attachments:
+                        context['image_url'] = attachments[0].get('payload', {}).get('url')
+                        image_response = describe_image(context['image_url'])
+                        send_message(sender_id, image_response)
 
             user_contexts[sender_id] = context
 
     return 'OK', 200
-
-def extract_error_info(image_description):
-    if "error message" in image_description:
-        return "The error message indicates a problem with the server configuration. Please check your server logs for more details."
-    return "I couldn't find specific error details in the description."
-
-def send_message(recipient_id, message_text):
-    payload = {
-        'messaging_type': 'RESPONSE',
-        'recipient': {'id': recipient_id},
-        'message': {'text': message_text}
-    }
-    response = requests.post(f'https://graph.facebook.com/v12.0/me/messages?access_token={PAGE_ACCESS_TOKEN}', json=payload)
-    
-    if response.status_code != 200:
-        error_message = response.json().get('error', {}).get('message', 'Unknown error occurred.')
-        print(f"Failed to send message: {error_message}")
-        
-        if "No matching user found" in error_message:
-            print("This user has not interacted with the bot recently; cannot send message.")
-    else:
-        print(f"Message sent successfully to {recipient_id}: {message_text}")
-
-def send_button_template(recipient_id, message_text):
-    payload = {
-        'messaging_type': 'RESPONSE',
-        'recipient': {'id': recipient_id},
-        'message': {
-            'attachment': {
-                'type': 'template',
-                'payload': {
-                    'template_type': 'button',
-                    'text': message_text,
-                    'buttons': [
-                        {
-                            "type": "postback",
-                            "title": "Ask a Question",
-                            "payload": "ASK_QUESTION"
-                        },
-                        {
-                            "type": "postback",
-                            "title": "Describing an Image",
-                            "payload": "DESCRIBE_IMAGE"
-                        }
-                    ]
-                }
-            }
-        }
-    }
-    requests.post(f'https://graph.facebook.com/v12.0/me/messages?access_token={PAGE_ACCESS_TOKEN}', json=payload)
-
-def send_typing_indicator(recipient_id):
-    payload = {
-        'recipient': {'id': recipient_id},
-        'sender_action': 'typing_on'
-    }
-    requests.post(f'https://graph.facebook.com/v12.0/me/messages?access_token={PAGE_ACCESS_TOKEN}', json=payload)
-    time.sleep(1)  # Simulate typing delay (optional)
-
-def ask_question(user_question):
-    try:
-        response = client.chat_completion(
-            model="meta-llama/Meta-Llama-3-70B-Instruct",
-            messages=[{"role": "user", "content": user_question}],
-            max_tokens=500,
-            stream=False,
-        )
-        return response.choices[0].message['content'] if response.choices else "I couldn't generate a response."
-    except Exception as e:
-        print(f"Error asking question: {e}")
-        return "Sorry, I'm having trouble answering your question."
-
-def describe_image(image_url):
-    try:
-        response = client.chat_completion(
-            model="meta-llama/Llama-3.2-11B-Vision-Instruct",
-            messages=[{"role": "user", "content": [{"type": "image_url", "image_url": {"url": image_url}}, {"type": "text", "text": "Describe this image in one sentence."}]}],
-            max_tokens=500,
-            stream=False,
-        )
-        return response.choices[0].message['content'] if response.choices else "I couldn't analyze the image."
-    except Exception as e:
-        print(f"Error describing image: {e}")
-        return "Sorry, I couldn't analyze the image."
 
 if __name__ == '__main__':
     app.run(port=5000, debug=True)
