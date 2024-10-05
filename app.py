@@ -81,7 +81,7 @@ def send_typing_indicator(recipient_id):
     time.sleep(1)  # Simulate typing delay (optional)
 
 def get_huggingface_response(context):
-    # Get the last N messages for context
+    # Get the last N messagses for context
     user_messages = context['messages'][-10:]  # Adjust the number as needed
     messages = [{"role": "user", "content": msg} for msg in user_messages]
 
