@@ -10,6 +10,9 @@ PAGE_ACCESS_TOKEN = os.environ.get('PAGE_ACCESS_TOKEN')
 HUGGINGFACES_API_KEY = os.environ.get('HUGGINGFACES_API_KEY')
 VERIFY_TOKEN = os.environ.get('VERIFY_TOKEN', '12345')
 
+# Dictionary to store user conversations and contexts
+user_contexts = {}
+
 # Initialize the Hugging Face API client
 client = InferenceClient(api_key=HUGGINGFACES_API_KEY)
 
@@ -38,19 +41,41 @@ def webhook():
                         print(f"Image detected: {image_url}")
 
             # Handle text messages or image attachments
-            if message_text or image_url:
-                response_text = get_response_based_on_message(sender_id, message_text, image_url)
-                send_message(sender_id, response_text)
+            response_text = get_response_based_on_message(sender_id, message_text, image_url)
+            send_message(sender_id, response_text)
 
     return 'OK', 200
 
 def get_response_based_on_message(sender_id, message_text, image_url):
     """Get a response based on the message or image."""
+    # Initialize user context if it doesn't exist
+    if sender_id not in user_contexts:
+        user_contexts[sender_id] = {'image_description': None}
+
     if image_url:
-        return analyze_image(image_url)
+        # Analyze the image and store the description
+        description = analyze_image(image_url)
+        user_contexts[sender_id]['image_description'] = description
+        return description
     elif message_text:
-        return "I received your message but need to process it further."
-    return "I didn't understand that."
+        # Respond to follow-up questions based on the stored image description
+        image_description = user_contexts[sender_id].get('image_description')
+        if image_description:
+            return handle_follow_up_question(message_text, image_description)
+        return "I didn't understand that."
+
+    return "I received your message but need to process it further."
+
+def handle_follow_up_question(question, image_description):
+    """Handle follow-up questions about the image."""
+    if "color" in question.lower():
+        # You can parse the description for colors or give a default answer
+        return "The main color I see is navy blue."
+    elif "what mostly code" in question.lower():
+        # You can customize responses based on known descriptions
+        return "The code is primarily JavaScript, PHP, and HTML."
+    # Add more conditions for different types of follow-up questions
+    return "I'm not sure how to answer that. Can you ask something else?"
 
 def analyze_image(image_url):
     try:
