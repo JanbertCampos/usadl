@@ -51,7 +51,7 @@ def webhook():
             message_text = event.get('message', {}).get('text')
             attachments = event.get('message', {}).get('attachments', [])
 
-            context = user_contexts.get(sender_id, {'messages': [], 'image_description': None, 'image_details': {}})
+            context = user_contexts.get(sender_id, {'messages': [], 'image_description': None, 'image_url': None})
 
             # Handle incoming message text
             if message_text:
@@ -65,42 +65,17 @@ def webhook():
 
                 send_typing_indicator(sender_id)
 
-                # Handle follow-up questions about the image
-                if context['image_description']:
-                    if "more details" in message_text or "details" in message_text:
-                        send_message(sender_id, "Could you please specify what other details you would like to know about the image?")
-                    elif "error" in message_text:
-                        error_info = extract_error_info(context['image_description'])
-                        send_message(sender_id, error_info)
-                    elif "color" in message_text:
-                        color_info = context['image_details'].get('color', "I'm not sure about the colors in the image.")
-                        send_message(sender_id, color_info)
-                    elif "dashboard" in message_text:
-                        dashboard_info = context['image_details'].get('dashboard', "I don't have specific details about the dashboard.")
-                        send_message(sender_id, dashboard_info)
-                    else:
-                        response_text = ask_question(message_text)
-                        send_message(sender_id, response_text)
-                elif "what" in message_text:  # Check if it’s a question
-                    if "browser" in message_text or "app" in message_text:
-                        send_message(sender_id, "I see a browser interface in the image.")
-                    else:
-                        response_text = ask_question(message_text)
-                        send_message(sender_id, response_text)
-                else:
-                    send_message(sender_id, "I'm not sure how to respond to that. Please try asking a question or saying 'Get Started'.")
+                # Process user questions
+                response_text = ask_question(message_text)
+                send_message(sender_id, response_text)
 
             # Handle image attachments
             if attachments:
                 image_url = attachments[0].get('payload', {}).get('url')
                 if image_url:
                     image_response = describe_image(image_url)
-                    # Update the context with specific details
                     context['image_description'] = image_response
-                    context['image_details'] = {
-                        'color': "I see blue and white colors.",  # Example color description
-                        'dashboard': "This appears to be a client management dashboard."  # Example dashboard description
-                    }
+                    context['image_url'] = image_url
                     send_message(sender_id, image_response)
                 else:
                     send_message(sender_id, MESSAGE_NO_IMAGE)
@@ -113,7 +88,6 @@ def extract_error_info(image_description):
     if "error message" in image_description:
         return "The error message indicates a problem with the server configuration. Please check your server logs for more details."
     return "I couldn't find specific error details in the description."
-
 
 def send_message(recipient_id, message_text):
     payload = {
@@ -185,15 +159,7 @@ def describe_image(image_url):
     try:
         response = client.chat_completion(
             model="meta-llama/Llama-3.2-11B-Vision-Instruct",
-            messages=[
-                {
-                    "role": "user",
-                    "content": [
-                        {"type": "image_url", "image_url": {"url": image_url}},
-                        {"type": "text", "text": "Describe this image in one sentence."},
-                    ],
-                }
-            ],
+            messages=[{"role": "user", "content": [{"type": "image_url", "image_url": {"url": image_url}}, {"type": "text", "text": "Describe this image in one sentence."}]}],
             max_tokens=500,
             stream=False,
         )
