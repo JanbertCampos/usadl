@@ -3,6 +3,7 @@ import requests
 import os
 from huggingface_hub import InferenceClient
 import time
+import logging
 
 app = Flask(__name__)
 
@@ -60,17 +61,21 @@ def webhook():
 
     return 'OK', 200
 
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+
 def send_message(recipient_id, message_text):
     payload = {
         'messaging_type': 'RESPONSE',
         'recipient': {'id': recipient_id},
         'message': {'text': message_text}
     }
-    response = requests.post(f'https://graph.facebook.com/v12.0/me/messages?access_token={PAGE_ACCESS_TOKEN}', json=payload)
-    if response.status_code != 200:
-        print(f"Failed to send message: {response.text}")
-    else:
-        print(f"Message sent successfully to {recipient_id}: {message_text}")
+    try:
+        response = requests.post(f'https://graph.facebook.com/v12.0/me/messages?access_token={PAGE_ACCESS_TOKEN}', json=payload)
+        response.raise_for_status()  # Raise an error for bad responses
+        logging.info(f"Message sent successfully to {recipient_id}: {message_text}")
+    except requests.HTTPError as e:
+        logging.error(f"Failed to send message: {e.response.text}")
 
 def send_typing_indicator(recipient_id):
     payload = {
