@@ -87,7 +87,7 @@ def get_huggingface_response(context):
 
     try:
         response = client.chat_completion(
-            model="meta-llama/Meta-Llama-3-70B-Instruct",
+            model="meta-llama/Llama-3.1-70B-Instruct",
             messages=messages,
             max_tokens=500,
             stream=False
