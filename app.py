@@ -58,16 +58,8 @@ def send_button_template(recipient_id: str, message_text: str) -> None:
                     'template_type': 'button',
                     'text': message_text,
                     'buttons': [
-                        {
-                            "type": "postback",
-                            "title": "Ask a Question",
-                            "payload": "ASK_QUESTION"
-                        },
-                        {
-                            "type": "postback",
-                            "title": "Describing an Image",
-                            "payload": "DESCRIBE_IMAGE"
-                        }
+                        {"type": "postback", "title": "Ask a Question", "payload": "ASK_QUESTION"},
+                        {"type": "postback", "title": "Describing an Image", "payload": "DESCRIBE_IMAGE"}
                     ]
                 }
             }
@@ -143,6 +135,7 @@ def webhook():
             message_text = event.get('message', {}).get('text')
             attachments = event.get('message', {}).get('attachments', [])
 
+            # Initialize user context if not present
             context = user_contexts.get(sender_id, {'messages': [], 'image_description': None, 'image_url': None})
 
             # Handle incoming message text
@@ -172,7 +165,7 @@ def webhook():
                         image_response = describe_image(context['image_url'])
                         send_message(sender_id, image_response)
 
-            user_contexts[sender_id] = context
+            user_contexts[sender_id] = context  # Update user context
 
     return 'OK', 200
 
