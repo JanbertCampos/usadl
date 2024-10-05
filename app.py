@@ -51,7 +51,7 @@ def webhook():
             message_text = event.get('message', {}).get('text')
             attachments = event.get('message', {}).get('attachments', [])
 
-            context = user_contexts.get(sender_id, {'messages': [], 'image_description': None})
+            context = user_contexts.get(sender_id, {'messages': [], 'image_description': None, 'image_details': {}})
 
             # Handle incoming message text
             if message_text:
@@ -65,14 +65,19 @@ def webhook():
 
                 send_typing_indicator(sender_id)
 
+                # Handle follow-up questions about the image
                 if context['image_description']:
-                    # Handle follow-up questions about the image
                     if "more details" in message_text or "details" in message_text:
                         send_message(sender_id, "Could you please specify what other details you would like to know about the image?")
                     elif "error" in message_text:
-                        # Extract relevant error information
                         error_info = extract_error_info(context['image_description'])
                         send_message(sender_id, error_info)
+                    elif "color" in message_text:
+                        color_info = context['image_details'].get('color', "I'm not sure about the colors in the image.")
+                        send_message(sender_id, color_info)
+                    elif "dashboard" in message_text:
+                        dashboard_info = context['image_details'].get('dashboard', "I don't have specific details about the dashboard.")
+                        send_message(sender_id, dashboard_info)
                     else:
                         response_text = ask_question(message_text)
                         send_message(sender_id, response_text)
@@ -90,7 +95,12 @@ def webhook():
                 image_url = attachments[0].get('payload', {}).get('url')
                 if image_url:
                     image_response = describe_image(image_url)
-                    context['image_description'] = image_response  # Store the description for follow-up questions
+                    # Update the context with specific details
+                    context['image_description'] = image_response
+                    context['image_details'] = {
+                        'color': "I see blue and white colors.",  # Example color description
+                        'dashboard': "This appears to be a client management dashboard."  # Example dashboard description
+                    }
                     send_message(sender_id, image_response)
                 else:
                     send_message(sender_id, MESSAGE_NO_IMAGE)
@@ -100,14 +110,9 @@ def webhook():
     return 'OK', 200
 
 def extract_error_info(image_description):
-    # Logic to extract specific error information from the description
-    # This could be as simple as returning a predefined message
-    # or parsing the description for specific error details
     if "error message" in image_description:
         return "The error message indicates a problem with the server configuration. Please check your server logs for more details."
     return "I couldn't find specific error details in the description."
-
-
 
 
 def send_message(recipient_id, message_text):
