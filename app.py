@@ -114,13 +114,23 @@ def get_huggingface_response(context):
         text = response.choices[0].message['content'] if response.choices else ""
 
         # Check for empty or repetitive responses
-        if not text or text in context['messages'][-3:]:
+        if not text:
             return "I'm sorry, I didn't quite understand that. Could you rephrase?"
+
+        # Check for repeated responses
+        recent_responses = context.get('recent_responses', [])
+        if text in recent_responses[-3:]:  # Check last 3 responses
+            return "I'm still not sure how to help with that. Could you provide more details?"
+
+        # Store the current response in recent responses
+        recent_responses.append(text)
+        context['recent_responses'] = recent_responses[-5:]  # Keep last 5 responses
 
         return text
     except Exception as e:
         print(f"Error getting response from Hugging Face: {e}")
         return "Sorry, I'm having trouble responding right now."
+
 
 if __name__ == '__main__':
     app.run(port=5000, debug=True)
