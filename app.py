@@ -38,14 +38,14 @@ def webhook():
     if 'messaging' in data['entry'][0]:
         for event in data['entry'][0]['messaging']:
             sender_id = event['sender']['id']
-            
+
             # Check for postback events
             if 'postback' in event:
                 postback_payload = event['postback']['payload']
                 if postback_payload == "ASK_QUESTION":
-                    send_message(sender_id, MESSAGE_ASK_QUESTION)
+                    send_message(sender_id, "Please ask your question.")
                 elif postback_payload == "DESCRIBE_IMAGE":
-                    send_message(sender_id, MESSAGE_DESCRIBE_IMAGE)
+                    send_message(sender_id, "Please send me the image you'd like to describe.")
                 continue  # Skip to the next event
 
             message_text = event.get('message', {}).get('text')
@@ -73,7 +73,6 @@ def webhook():
             user_contexts[sender_id] = context
 
     return 'OK', 200
-
 
 def send_message(recipient_id, message_text):
     payload = {
