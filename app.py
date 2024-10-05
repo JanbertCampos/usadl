@@ -113,14 +113,23 @@ def get_huggingface_response(context):
 
         text = response.choices[0].message['content'] if response.choices else ""
 
-        # Check for empty or repetitive responses
+        # Check for empty responses
         if not text:
             return "I'm sorry, I didn't quite understand that. Could you rephrase?"
 
-        # Check for repeated responses
+        # Limit repetitive fallback responses
         recent_responses = context.get('recent_responses', [])
-        if text in recent_responses[-3:]:  # Check last 3 responses
+        fallback_count = context.get('fallback_count', 0)
+
+        if text in recent_responses[-3:]:
+            fallback_count += 1
+            if fallback_count >= 3:  # Limit to 3 consecutive fallbacks
+                return "I'm really not sure how to assist you. Maybe you could try asking something else?"
+            context['fallback_count'] = fallback_count
             return "I'm still not sure how to help with that. Could you provide more details?"
+
+        # Reset fallback count if a valid response is received
+        context['fallback_count'] = 0
 
         # Store the current response in recent responses
         recent_responses.append(text)
@@ -130,7 +139,6 @@ def get_huggingface_response(context):
     except Exception as e:
         print(f"Error getting response from Hugging Face: {e}")
         return "Sorry, I'm having trouble responding right now."
-
 
 if __name__ == '__main__':
     app.run(port=5000, debug=True)
