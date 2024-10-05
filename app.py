@@ -72,10 +72,14 @@ def send_message(recipient_id, message_text):
     }
     try:
         response = requests.post(f'https://graph.facebook.com/v12.0/me/messages?access_token={PAGE_ACCESS_TOKEN}', json=payload)
-        response.raise_for_status()  # Raise an error for bad responses
+        response.raise_for_status()
         logging.info(f"Message sent successfully to {recipient_id}: {message_text}")
     except requests.HTTPError as e:
-        logging.error(f"Failed to send message: {e.response.text}")
+        if 'No matching user found' in e.response.text:
+            logging.warning(f"User {recipient_id} has not interacted with the bot yet.")
+        else:
+            logging.error(f"Failed to send message: {e.response.text}")
+
 
 def send_typing_indicator(recipient_id):
     payload = {
