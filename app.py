@@ -49,26 +49,22 @@ def webhook():
                 continue  # Skip to the next event
 
             message_text = event.get('message', {}).get('text')
-            attachments = event.get('message', {}).get('attachments', [])
-            image_url = attachments[0].get('payload', {}).get('url') if attachments else None
 
+            if message_text and message_text.lower() == "get started":
+                send_button_template(sender_id, MESSAGE_WELCOME)
+                continue  # Skip to the next event
+
+            # Handle other messages
             context = user_contexts.get(sender_id, {'messages': []})
+            context['messages'].append(message_text)
 
-            if message_text:
-                print(f"Received message from {sender_id}: {message_text}")
-                context['messages'].append(message_text)
+            send_typing_indicator(sender_id)
 
-                send_typing_indicator(sender_id)
-
-                # Process messages or questions
-                if "what" in message_text.lower():  # Simple check for a question
-                    response_text = ask_question(message_text)
-                    send_message(sender_id, response_text)
-                elif image_url:
-                    image_response = describe_image(image_url)
-                    send_message(sender_id, image_response)
-                else:
-                    send_message(sender_id, "I'm not sure how to respond to that. Please try asking a question or saying 'Get Started'.")
+            if "what" in message_text.lower():  # Simple check for a question
+                response_text = ask_question(message_text)
+                send_message(sender_id, response_text)
+            else:
+                send_message(sender_id, "I'm not sure how to respond to that. Please try asking a question or saying 'Get Started'.")
 
             user_contexts[sender_id] = context
 
@@ -88,7 +84,6 @@ def send_message(recipient_id, message_text):
         
         if "No matching user found" in error_message:
             print("This user has not interacted with the bot recently; cannot send message.")
-
     else:
         print(f"Message sent successfully to {recipient_id}: {message_text}")
 
