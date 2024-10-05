@@ -89,13 +89,10 @@ def send_typing_indicator(recipient_id):
 
 def get_huggingface_response(context):
     messages = []
-
-    # Create structured messages for the model
-    user_messages = context['messages'][-10:]  # Adjust the number as needed
+    user_messages = context['messages'][-10:]  # Get the last 10 messages
 
     for msg in user_messages:
-        # If the message is an image URL, include it in the correct format
-        if "http" in msg:  # Simple check for an image URL
+        if "http" in msg:  # Check for image URLs
             messages.append({
                 "type": "image_url",
                 "image_url": {"url": msg}
@@ -109,20 +106,16 @@ def get_huggingface_response(context):
     try:
         response = client.chat_completion(
             model="meta-llama/Llama-3.2-11B-Vision-Instruct",
-            messages=[
-                {
-                    "role": "user",
-                    "content": messages
-                }
-            ],
+            messages=[{"role": "user", "content": messages}],
             max_tokens=500,
             stream=False,
         )
 
         text = response.choices[0].message['content'] if response.choices else ""
 
-        if not text:
-            return "I'm sorry, I couldn't generate a response. Can you please ask something else?"
+        # Check for empty or repetitive responses
+        if not text or text in context['messages'][-3:]:
+            return "I'm sorry, I didn't quite understand that. Could you rephrase?"
 
         return text
     except Exception as e:
