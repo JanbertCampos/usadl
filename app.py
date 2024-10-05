@@ -79,7 +79,11 @@ def send_message(recipient_id, message_text):
     }
     response = requests.post(f'https://graph.facebook.com/v12.0/me/messages?access_token={PAGE_ACCESS_TOKEN}', json=payload)
     if response.status_code != 200:
-        print(f"Failed to send message: {response.text}")
+        error_message = response.json().get('error', {}).get('message', 'Unknown error occurred.')
+        print(f"Failed to send message: {error_message}")
+        
+        if "No matching user found" in error_message:
+            print("This user has not interacted with the bot recently; cannot send message.")
     else:
         print(f"Message sent successfully to {recipient_id}: {message_text}")
 
