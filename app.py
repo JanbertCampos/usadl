@@ -51,6 +51,8 @@ def webhook():
             message_text = event.get('message', {}).get('text')
             attachments = event.get('message', {}).get('attachments', [])
 
+            context = user_contexts.get(sender_id, {'messages': [], 'image_description': None})
+
             # Handle incoming message text
             if message_text:
                 message_text = message_text.lower()  # Normalize to lowercase
@@ -59,12 +61,18 @@ def webhook():
                     send_button_template(sender_id, MESSAGE_WELCOME)
                     continue
 
-                context = user_contexts.get(sender_id, {'messages': []})
                 context['messages'].append(message_text)
 
                 send_typing_indicator(sender_id)
 
-                if "what" in message_text:  # Check if it’s a question
+                if context['image_description']:
+                    # Check for follow-up questions about the image
+                    if "details" in message_text or "more" in message_text:
+                        send_message(sender_id, "Could you please specify what other details you would like to know about the image?")
+                    else:
+                        response_text = ask_question(message_text)
+                        send_message(sender_id, response_text)
+                elif "what" in message_text:  # Check if it’s a question
                     if "browser" in message_text or "app" in message_text:
                         send_message(sender_id, "I see a browser interface in the image.")
                     else:
@@ -73,16 +81,20 @@ def webhook():
                 else:
                     send_message(sender_id, "I'm not sure how to respond to that. Please try asking a question or saying 'Get Started'.")
 
-                user_contexts[sender_id] = context
-            elif attachments:
+            # Handle image attachments
+            if attachments:
                 image_url = attachments[0].get('payload', {}).get('url')
                 if image_url:
                     image_response = describe_image(image_url)
+                    context['image_description'] = image_response  # Store the description for follow-up questions
                     send_message(sender_id, image_response)
                 else:
                     send_message(sender_id, MESSAGE_NO_IMAGE)
 
+            user_contexts[sender_id] = context
+
     return 'OK', 200
+
 
 
 def send_message(recipient_id, message_text):
