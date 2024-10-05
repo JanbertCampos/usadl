@@ -11,12 +11,10 @@ PAGE_ACCESS_TOKEN = os.environ.get('PAGE_ACCESS_TOKEN')
 HUGGINGFACES_API_KEY = os.environ.get('HUGGINGFACES_API_KEY')
 VERIFY_TOKEN = os.environ.get('VERIFY_TOKEN', '12345')
 
-# Message templates
-MESSAGE_WELCOME = "Welcome! How can I assist you today?"
-MESSAGE_ASK_QUESTION = "What would you like to ask?"
-MESSAGE_DESCRIBE_IMAGE = "Please send me the image you'd like to describe."
-MESSAGE_NO_IMAGE = "I apologize, but I didn't receive any image to analyze. Please share the image first."
-MESSAGE_NO_USERS = "It seems I made a mistake! This conversation just started, and we don't have any users yet. Let's start fresh!"
+# Instructions for the AI
+AI_INSTRUCTIONS = (
+    "You are JanbertGwapo, a helpful and super intelligent being in the entire universe. Please be polite and kind."
+)
 
 # Dictionary to store user conversations and topics
 user_contexts = {}
@@ -30,86 +28,6 @@ def verify():
         return request.args.get('hub.challenge')
     return 'Invalid verification token', 403
 
-def send_message(recipient_id: str, message_text: str) -> None:
-    payload = {
-        'messaging_type': 'RESPONSE',
-        'recipient': {'id': recipient_id},
-        'message': {'text': message_text}
-    }
-    response = requests.post(f'https://graph.facebook.com/v12.0/me/messages?access_token={PAGE_ACCESS_TOKEN}', json=payload)
-    
-    if response.status_code != 200:
-        error_message = response.json().get('error', {}).get('message', 'Unknown error occurred.')
-        print(f"Failed to send message: {error_message}")
-        
-        if "No matching user found" in error_message:
-            print("This user has not interacted with the bot recently; cannot send message.")
-    else:
-        print(f"Message sent successfully to {recipient_id}: {message_text}")
-
-def send_button_template(recipient_id: str, message_text: str) -> None:
-    payload = {
-        'messaging_type': 'RESPONSE',
-        'recipient': {'id': recipient_id},
-        'message': {
-            'attachment': {
-                'type': 'template',
-                'payload': {
-                    'template_type': 'button',
-                    'text': message_text,
-                    'buttons': [
-                        {"type": "postback", "title": "Ask a Question", "payload": "ASK_QUESTION"},
-                        {"type": "postback", "title": "Describing an Image", "payload": "DESCRIBE_IMAGE"}
-                    ]
-                }
-            }
-        }
-    }
-    requests.post(f'https://graph.facebook.com/v12.0/me/messages?access_token={PAGE_ACCESS_TOKEN}', json=payload)
-
-def send_typing_indicator(recipient_id: str) -> None:
-    payload = {
-        'recipient': {'id': recipient_id},
-        'sender_action': 'typing_on'
-    }
-    requests.post(f'https://graph.facebook.com/v12.0/me/messages?access_token={PAGE_ACCESS_TOKEN}', json=payload)
-    time.sleep(1)  # Simulate typing delay (optional)
-
-def ask_question(user_question: str) -> str:
-    try:
-        response = client.chat_completion(
-            model="meta-llama/Meta-Llama-3-70B-Instruct",
-            messages=[{"role": "user", "content": user_question}],
-            max_tokens=500,
-            stream=False,
-        )
-        return response.choices[0].message['content'] if response.choices else "I couldn't generate a response."
-    except Exception as e:
-        print(f"Error asking question: {e}")
-        return "Sorry, I'm having trouble answering your question."
-
-def describe_image(image_url: str, user_question: str = None) -> str:
-    try:
-        messages = [
-            {"type": "image_url", "image_url": {"url": image_url}},
-            {"type": "text", "text": "Describe this image in one sentence."}
-        ]
-        
-        # If there's a user question, include it in the messages
-        if user_question:
-            messages.append({"type": "text", "text": user_question})
-
-        response = client.chat_completion(
-            model="meta-llama/Llama-3.2-11B-Vision-Instruct",
-            messages=[{"role": "user", "content": messages}],
-            max_tokens=500,
-            stream=False,
-        )
-        return response.choices[0].message['content'] if response.choices else "I couldn't analyze the image."
-    except Exception as e:
-        print(f"Error describing image: {e}")
-        return "Sorry, I couldn't analyze the image."
-
 @app.route('/webhook', methods=['POST'])
 def webhook():
     data = request.get_json()
@@ -118,58 +36,98 @@ def webhook():
     if 'messaging' in data['entry'][0]:
         for event in data['entry'][0]['messaging']:
             sender_id = event['sender']['id']
-
-            # Skip processing if this is an echo message
-            if event.get('message', {}).get('is_echo'):
-                continue
-
-            # Check for postback events
-            if 'postback' in event:
-                postback_payload = event['postback']['payload']
-                if postback_payload == "ASK_QUESTION":
-                    send_message(sender_id, MESSAGE_ASK_QUESTION)
-                elif postback_payload == "DESCRIBE_IMAGE":
-                    send_message(sender_id, MESSAGE_DESCRIBE_IMAGE)
-                continue  # Skip to the next event
-
-            # Handle incoming message text and attachments
             message_text = event.get('message', {}).get('text')
-            attachments = event.get('message', {}).get('attachments', [])
+            message_attachments = event.get('message', {}).get('attachments', [])
 
-            # Initialize user context if not present
-            context = user_contexts.get(sender_id, {'messages': [], 'image_description': None, 'image_url': None})
+            # Retrieve or initialize the conversation context
+            context = user_contexts.get(sender_id, {'messages': []})
 
-            # Handle incoming message text
             if message_text:
-                message_text = message_text.lower()  # Normalize to lowercase
-
-                if message_text == "get started":
-                    send_button_template(sender_id, MESSAGE_WELCOME)
-                    continue
-
+                print(f"Received message from {sender_id}: {message_text}")
                 context['messages'].append(message_text)
-                send_typing_indicator(sender_id)
 
-                # Handle follow-up questions about the image
-                if context['image_url']:
-                    if "details" in message_text or "what" in message_text:  # Catch all for follow-up questions
-                        image_response = describe_image(context['image_url'], message_text)
-                        send_message(sender_id, image_response)
-                    else:
-                        response_text = ask_question(message_text)
-                        send_message(sender_id, response_text)
-                else:
-                    # Handle the first question or image request
-                    if attachments:
-                        context['image_url'] = attachments[0].get('payload', {}).get('url')
-                        if context['image_url']:
-                            image_response = describe_image(context['image_url'])
-                            send_message(sender_id, image_response)
+            # Check for attachments (like images)
+            for attachment in message_attachments:
+                if attachment['type'] == 'image':
+                    image_url = attachment['payload']['url']
+                    context['messages'].append(image_url)
 
-            user_contexts[sender_id] = context  # Update user context
+            # Send typing indicator
+            send_typing_indicator(sender_id)
+
+            # Get response from Hugging Face model
+            response_text = get_huggingface_response(context)
+            print(f"Full response: {response_text}")
+
+            # Send the response back to the user
+            send_message(sender_id, response_text)
+
+            # Store updated context
+            user_contexts[sender_id] = context
 
     return 'OK', 200
 
+def send_message(recipient_id, message_text):
+    payload = {
+        'messaging_type': 'RESPONSE',
+        'recipient': {'id': recipient_id},
+        'message': {'text': message_text}
+    }
+    response = requests.post(f'https://graph.facebook.com/v12.0/me/messages?access_token={PAGE_ACCESS_TOKEN}', json=payload)
+    if response.status_code != 200:
+        print(f"Failed to send message: {response.text}")
+    else:
+        print(f"Message sent successfully to {recipient_id}: {message_text}")
+
+def send_typing_indicator(recipient_id):
+    payload = {
+        'recipient': {'id': recipient_id},
+        'sender_action': 'typing_on'
+    }
+    requests.post(f'https://graph.facebook.com/v12.0/me/messages?access_token={PAGE_ACCESS_TOKEN}', json=payload)
+    time.sleep(1)  # Simulate typing delay (optional)
+
+def get_huggingface_response(context):
+    messages = []
+
+    # Create structured messages for the model
+    user_messages = context['messages'][-10:]  # Adjust the number as needed
+
+    for msg in user_messages:
+        # If the message is an image URL, include it in the correct format
+        if "http" in msg:  # Simple check for an image URL
+            messages.append({
+                "type": "image_url",
+                "image_url": {"url": msg}
+            })
+        else:
+            messages.append({
+                "type": "text",
+                "text": msg
+            })
+
+    try:
+        response = client.chat_completion(
+            model="meta-llama/Llama-3.2-11B-Vision-Instruct",
+            messages=[
+                {
+                    "role": "user",
+                    "content": messages
+                }
+            ],
+            max_tokens=500,
+            stream=False,
+        )
+
+        text = response.choices[0].message['content'] if response.choices else ""
+
+        if not text:
+            return "I'm sorry, I couldn't generate a response. Can you please ask something else?"
+
+        return text
+    except Exception as e:
+        print(f"Error getting response from Hugging Face: {e}")
+        return "Sorry, I'm having trouble responding right now."
 
 if __name__ == '__main__':
     app.run(port=5000, debug=True)
