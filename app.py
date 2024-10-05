@@ -41,8 +41,9 @@ def webhook():
                         print(f"Image detected: {image_url}")
 
             # Handle text messages or image attachments
-            response_text = get_response_based_on_message(sender_id, message_text, image_url)
-            send_message(sender_id, response_text)
+            if message_text or image_url:
+                response_text = get_response_based_on_message(sender_id, message_text, image_url)
+                send_message(sender_id, response_text)
 
     return 'OK', 200
 
@@ -55,8 +56,9 @@ def get_response_based_on_message(sender_id, message_text, image_url):
             'conversation_history': []
         }
 
-    # Store the user's message in conversation history
-    user_contexts[sender_id]['conversation_history'].append(f"You: {message_text}")
+    # Store the user's message in conversation history, ensuring it's not empty
+    if message_text:
+        user_contexts[sender_id]['conversation_history'].append(f"You: {message_text}")
 
     if image_url:
         # Analyze the image and store the description
@@ -71,19 +73,20 @@ def get_response_based_on_message(sender_id, message_text, image_url):
 
 def generate_response(conversation_history):
     """Generate a response based on the full conversation history."""
-    # Here you can use a model or logic to create a response based on the conversation history
+    if not conversation_history:
+        return "I'm not sure how to answer that. Can you ask something else?"
+
     last_user_message = conversation_history[-1]
     previous_ai_responses = [msg for msg in conversation_history if msg.startswith("AI:")]
 
     if previous_ai_responses:
         last_ai_response = previous_ai_responses[-1]
         if "image description" in last_ai_response.lower():
-            return "What would you like to know about the image?"  # Example follow-up question
+            return "What would you like to know about the image?"
         elif "art style" in last_ai_response.lower():
             return "What aspect of the art style would you like to discuss?"
-        
-    return "I'm not sure how to answer that. Can you ask something else?"
 
+    return "I'm not sure how to answer that. Can you ask something else?"
 
 def analyze_image(image_url):
     """Analyze the image and return a description."""
@@ -114,17 +117,18 @@ def analyze_image(image_url):
 
 def send_message(recipient_id, message_text):
     """Send a message back to the user."""
-    payload = {
-        'messaging_type': 'RESPONSE',
-        'recipient': {'id': recipient_id},
-        'message': {'text': message_text}
-    }
-    response = requests.post(f'https://graph.facebook.com/v12.0/me/messages?access_token={PAGE_ACCESS_TOKEN}', json=payload)
+    if message_text:  # Ensure we don't send empty messages
+        payload = {
+            'messaging_type': 'RESPONSE',
+            'recipient': {'id': recipient_id},
+            'message': {'text': message_text}
+        }
+        response = requests.post(f'https://graph.facebook.com/v12.0/me/messages?access_token={PAGE_ACCESS_TOKEN}', json=payload)
 
-    if response.status_code != 200:
-        print(f"Failed to send message: {response.text}")
-    else:
-        print(f"Message sent successfully to {recipient_id}: {message_text}")
+        if response.status_code != 200:
+            print(f"Failed to send message: {response.text}")
+        else:
+            print(f"Message sent successfully to {recipient_id}: {message_text}")
 
 if __name__ == '__main__':
     app.run(port=5000, debug=True)
