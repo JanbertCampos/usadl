@@ -13,10 +13,10 @@ VERIFY_TOKEN = os.environ.get('VERIFY_TOKEN', '12345')
 
 # Instructions for the AI
 AI_INSTRUCTIONS = (
-    "You are JanbertGwapo, a helpful and super intelligent being in the entire universe. Please be polite and kind."
+    "You are JanbertGwapo, a helpful and super intelligent being in the universe. Please be polite and kind."
 )
 
-# Dictionary to store user conversations and topics
+# Dictionary to store user conversations and contexts
 user_contexts = {}
 
 # Initialize the Hugging Face API client
@@ -37,43 +37,41 @@ def webhook():
         for event in data['entry'][0]['messaging']:
             sender_id = event['sender']['id']
             message_text = event.get('message', {}).get('text')
-            message_attachments = event.get('message', {}).get('attachments', [])
-
-            # Retrieve or initialize the conversation context
-            context = user_contexts.get(sender_id, {'messages': []})
 
             if message_text:
                 print(f"Received message from {sender_id}: {message_text}")
-                context['messages'].append(message_text)
 
-            # Check for attachments (like images)
-            for attachment in message_attachments:
-                if attachment['type'] == 'image':
-                    image_url = attachment['payload']['url']
-                    context['messages'].append(image_url)
+                # Retrieve or initialize the conversation context
+                context = user_contexts.get(sender_id, {'messages': []})
+                context['messages'].append(message_text)  # Add the new message to the context
 
-            # Send typing indicator
-            send_typing_indicator(sender_id)
+                # Send typing indicator
+                send_typing_indicator(sender_id)
 
-            # Get response from Hugging Face model
-            response_text = get_huggingface_response(context)
-            print(f"Full response: {response_text}")
+                # Get response from Hugging Face model
+                response_text = get_huggingface_response(context)
+                print(f"Full response: {response_text}")
 
-            # Send the response back to the user
-            send_message(sender_id, response_text)
+                # Send the response back to the user
+                send_message(sender_id, response_text)
 
-            # Store updated context
-            user_contexts[sender_id] = context
+                # Store updated context
+                user_contexts[sender_id] = context
 
     return 'OK', 200
 
 def send_message(recipient_id, message_text):
+    if not recipient_id or not message_text:
+        print("Invalid recipient ID or message text.")
+        return
+
     payload = {
         'messaging_type': 'RESPONSE',
         'recipient': {'id': recipient_id},
         'message': {'text': message_text}
     }
     response = requests.post(f'https://graph.facebook.com/v12.0/me/messages?access_token={PAGE_ACCESS_TOKEN}', json=payload)
+
     if response.status_code != 200:
         print(f"Failed to send message: {response.text}")
     else:
@@ -103,10 +101,15 @@ def get_huggingface_response(context):
                 "text": msg
             })
 
+    # Add instructions to the context for better responses
+    instructions = [{"role": "system", "content": AI_INSTRUCTIONS}]
+    user_input = [{"role": "user", "content": messages}]
+    full_messages = instructions + user_input
+
     try:
         response = client.chat_completion(
             model="meta-llama/Llama-3.2-11B-Vision-Instruct",
-            messages=[{"role": "user", "content": messages}],
+            messages=full_messages,
             max_tokens=500,
             stream=False,
         )
@@ -115,7 +118,7 @@ def get_huggingface_response(context):
 
         # Check for empty responses
         if not text:
-            return "I'm sorry, I didn't quite understand that. Could you rephrase?"
+            return "Could you clarify what you need help with?"
 
         # Limit repetitive fallback responses
         recent_responses = context.get('recent_responses', [])
@@ -124,9 +127,9 @@ def get_huggingface_response(context):
         if text in recent_responses[-3:]:
             fallback_count += 1
             if fallback_count >= 3:  # Limit to 3 consecutive fallbacks
-                return "I'm really not sure how to assist you. Maybe you could try asking something else?"
+                return "I'm having difficulty understanding. Please try a different question."
             context['fallback_count'] = fallback_count
-            return "I'm still not sure how to help with that. Could you provide more details?"
+            return "I'm still not sure how to assist you. Could you provide more details?"
 
         # Reset fallback count if a valid response is received
         context['fallback_count'] = 0
@@ -138,7 +141,7 @@ def get_huggingface_response(context):
         return text
     except Exception as e:
         print(f"Error getting response from Hugging Face: {e}")
-        return "Sorry, I'm having trouble responding right now."
+        return "I'm currently unable to respond to that."
 
 if __name__ == '__main__':
     app.run(port=5000, debug=True)
