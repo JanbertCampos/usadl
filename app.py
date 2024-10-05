@@ -48,44 +48,42 @@ def webhook():
 
 def get_response_based_on_message(sender_id, message_text, image_url):
     """Get a response based on the message or image."""
-    # Initialize user context if it doesn't exist
     if sender_id not in user_contexts:
-        user_contexts[sender_id] = {'image_description': None, 'conversation_history': []}
+        user_contexts[sender_id] = {
+            'image_description': None,
+            'art_style': None,
+            'conversation_history': []
+        }
+
+    # Store the user's message in conversation history
+    user_contexts[sender_id]['conversation_history'].append(f"You: {message_text}")
 
     if image_url:
         # Analyze the image and store the description
         description = analyze_image(image_url)
         user_contexts[sender_id]['image_description'] = description
-        user_contexts[sender_id]['conversation_history'].append(f"Image description: {description}")
+        user_contexts[sender_id]['conversation_history'].append(f"AI: {description}")
         return description
-    elif message_text:
-        # Add the user message to conversation history
-        user_contexts[sender_id]['conversation_history'].append(f"You: {message_text}")
-        response = generate_response(user_contexts[sender_id]['conversation_history'])
-        return response
 
-    return "I received your message but need to process it further."
+    # Generate a response based on the full conversation history
+    response = generate_response(user_contexts[sender_id]['conversation_history'])
+    return response
 
 def generate_response(conversation_history):
-    """Generate a response based on the conversation history."""
-    # Join the conversation history and ask the AI for a response
-    history = "\n".join(conversation_history)
-    try:
-        response = client.chat_completion(
-            model="meta-llama/Llama-3.2-11B-Vision-Instruct",
-            messages=[{"role": "user", "content": history}],
-            max_tokens=500,
-            stream=False,
-        )
+    """Generate a response based on the full conversation history."""
+    # Here you can use a model or logic to create a response based on the conversation history
+    last_user_message = conversation_history[-1]
+    previous_ai_responses = [msg for msg in conversation_history if msg.startswith("AI:")]
 
-        if hasattr(response, 'choices') and len(response.choices) > 0:
-            return response.choices[0].message['content'].strip()
+    if previous_ai_responses:
+        last_ai_response = previous_ai_responses[-1]
+        if "image description" in last_ai_response.lower():
+            return "What would you like to know about the image?"  # Example follow-up question
+        elif "art style" in last_ai_response.lower():
+            return "What aspect of the art style would you like to discuss?"
+        
+    return "I'm not sure how to answer that. Can you ask something else?"
 
-        return "I'm sorry, I couldn't generate a response."
-
-    except Exception as e:
-        print(f"Error generating response: {e}")
-        return "Sorry, I'm having trouble processing that right now."
 
 def analyze_image(image_url):
     """Analyze the image and return a description."""
