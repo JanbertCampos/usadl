@@ -11,10 +11,7 @@ PAGE_ACCESS_TOKEN = os.environ.get('PAGE_ACCESS_TOKEN')
 HUGGINGFACES_API_KEY = os.environ.get('HUGGINGFACES_API_KEY')
 VERIFY_TOKEN = os.environ.get('VERIFY_TOKEN', '12345')
 
-# Dictionary to store user conversations and topics
 user_contexts = {}
-
-# Initialize the Hugging Face API client
 client = InferenceClient(api_key=HUGGINGFACES_API_KEY)
 
 @app.route('/webhook', methods=['GET'])
@@ -37,35 +34,28 @@ def webhook():
 
             context = user_contexts.get(sender_id, {'messages': []})
 
-            # Process text message
             response_parts = []
 
             if message_text:
                 print(f"Received message from {sender_id}: {message_text}")
                 context['messages'].append(message_text)
-
                 send_typing_indicator(sender_id)
 
-                # Get the response from Hugging Face model
                 response_text = get_huggingface_response(context)
-
-                # Check for duplicate responses
-                if context.get('last_response') == response_text:
-                    print("Duplicate response detected; generating a new response.")
-                    response_text = "I have already answered that. Can you ask something different?"
-
                 response_parts.append(response_text)
-                context['last_response'] = response_text
 
-            # Process image URL
             if image_url:
                 print(f"Received image from {sender_id}: {image_url}")
                 image_response = get_huggingface_image_response(image_url)
                 response_parts.append(image_response)
 
-            # Combine responses
-            combined_response = "\n\n".join(response_parts)
-            send_message(sender_id, combined_response)
+            # Only send a message if we have responses to combine
+            if response_parts:
+                combined_response = "\n\n".join(response_parts)
+                if context.get('last_response') != combined_response:
+                    send_message(sender_id, combined_response)
+                    context['last_response'] = combined_response
+
             user_contexts[sender_id] = context
 
     return 'OK', 200
@@ -92,7 +82,7 @@ def send_typing_indicator(recipient_id):
         'sender_action': 'typing_on'
     }
     requests.post(f'https://graph.facebook.com/v12.0/me/messages?access_token={PAGE_ACCESS_TOKEN}', json=payload)
-    time.sleep(1)  # Simulate typing delay (optional)
+    time.sleep(1)
 
 def get_huggingface_response(context):
     user_messages = context['messages'][-10:]
