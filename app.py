@@ -13,7 +13,7 @@ VERIFY_TOKEN = os.environ.get('VERIFY_TOKEN', '12345')
 
 # Instructions for the AI
 AI_INSTRUCTIONS = (
-    "You are JanbertGwapo, a helpful a super intelligent in entire universe. "
+    "Your name is JanbertGwapo your girlfriend is aira mariz sorote, a helpful super intelligent in the entire universe and also be polite and kind."
 )
 
 # Dictionary to store user conversations and topics
@@ -37,26 +37,24 @@ def webhook():
         for event in data['entry'][0]['messaging']:
             sender_id = event['sender']['id']
             message_text = event.get('message', {}).get('text')
+            image_url = event.get('message', {}).get('attachments', [{}])[0].get('payload', {}).get('url')
 
+            context = user_contexts.get(sender_id, {'messages': []})
+            
             if message_text:
                 print(f"Received message from {sender_id}: {message_text}")
-
-                # Retrieve or initialize the conversation context
-                context = user_contexts.get(sender_id, {'messages': []})
-                context['messages'].append(message_text)  # Add the new message to the context
-
-                # Send typing indicator
-                send_typing_indicator(sender_id)
-
-                # Get response from Hugging Face model
-                response_text = get_huggingface_response(context)
-                print(f"Full response: {response_text}")
-
-                # Send the response back to the user
+                context['messages'].append(message_text)
+            elif image_url:
+                print(f"Received image from {sender_id}: {image_url}")
+                response_text = get_huggingface_image_response(image_url)
                 send_message(sender_id, response_text)
+                continue
 
-                # Store updated context
-                user_contexts[sender_id] = context
+            send_typing_indicator(sender_id)
+            response_text = get_huggingface_response(context)
+            print(f"Full response: {response_text}")
+            send_message(sender_id, response_text)
+            user_contexts[sender_id] = context
 
     return 'OK', 200
 
@@ -81,8 +79,7 @@ def send_typing_indicator(recipient_id):
     time.sleep(1)  # Simulate typing delay (optional)
 
 def get_huggingface_response(context):
-    # Get the last N messages for context
-    user_messages = context['messages'][-10:]  # Adjust the number as needed
+    user_messages = context['messages'][-10:]
     messages = [{"role": "user", "content": msg} for msg in user_messages]
 
     try:
@@ -92,16 +89,34 @@ def get_huggingface_response(context):
             max_tokens=500,
             stream=False
         )
-
         text = response.choices[0].message['content'] if response.choices else ""
-
-        if not text:
-            return "I'm sorry, I couldn't generate a response. Can you please ask something else?"
-
-        return text
+        return text if text else "I'm sorry, I couldn't generate a response. Can you please ask something else?"
     except Exception as e:
         print(f"Error getting response from Hugging Face: {e}")
         return "Sorry, I'm having trouble responding right now."
-        
+
+def get_huggingface_image_response(image_url):
+    messages = [
+        {
+            "role": "user",
+            "content": [
+                {"type": "image_url", "image_url": {"url": image_url}},
+                {"type": "text", "text": "Describe this image in one sentence."},
+            ],
+        }
+    ]
+
+    try:
+        response = client.chat_completion(
+            model="meta-llama/Llama-3.2-11B-Vision-Instruct",
+            messages=messages,
+            max_tokens=500,
+            stream=False,
+        )
+        return response.choices[0].message['content'] if response.choices else "I couldn't analyze the image."
+    except Exception as e:
+        print(f"Error getting image response from Hugging Face: {e}")
+        return "Sorry, I couldn't analyze the image."
+
 if __name__ == '__main__':
     app.run(port=5000, debug=True)
