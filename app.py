@@ -51,26 +51,30 @@ def webhook():
             message_text = event.get('message', {}).get('text')
             attachments = event.get('message', {}).get('attachments', [])
 
-            # Check if the message_text is not None before processing
+            # Handle incoming message text
             if message_text:
-                if message_text.lower() == "get started":
+                message_text = message_text.lower()  # Normalize to lowercase
+
+                if message_text == "get started":
                     send_button_template(sender_id, MESSAGE_WELCOME)
-                    continue  # Skip to the next event
+                    continue
 
                 context = user_contexts.get(sender_id, {'messages': []})
                 context['messages'].append(message_text)
 
                 send_typing_indicator(sender_id)
 
-                if "what" in message_text.lower():  # Simple check for a question
-                    response_text = ask_question(message_text)
-                    send_message(sender_id, response_text)
+                if "what" in message_text:  # Check if it’s a question
+                    if "browser" in message_text or "app" in message_text:
+                        send_message(sender_id, "I see a browser interface in the image.")
+                    else:
+                        response_text = ask_question(message_text)
+                        send_message(sender_id, response_text)
                 else:
                     send_message(sender_id, "I'm not sure how to respond to that. Please try asking a question or saying 'Get Started'.")
 
                 user_contexts[sender_id] = context
             elif attachments:
-                # Handle the case where there are attachments (e.g., images)
                 image_url = attachments[0].get('payload', {}).get('url')
                 if image_url:
                     image_response = describe_image(image_url)
