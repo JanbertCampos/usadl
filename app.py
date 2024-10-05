@@ -132,6 +132,7 @@ def webhook():
                     send_message(sender_id, MESSAGE_DESCRIBE_IMAGE)
                 continue  # Skip to the next event
 
+            # Handle incoming message text and attachments
             message_text = event.get('message', {}).get('text')
             attachments = event.get('message', {}).get('attachments', [])
 
@@ -147,7 +148,6 @@ def webhook():
                     continue
 
                 context['messages'].append(message_text)
-
                 send_typing_indicator(sender_id)
 
                 # Handle follow-up questions about the image
@@ -162,12 +162,14 @@ def webhook():
                     # Handle the first question or image request
                     if attachments:
                         context['image_url'] = attachments[0].get('payload', {}).get('url')
-                        image_response = describe_image(context['image_url'])
-                        send_message(sender_id, image_response)
+                        if context['image_url']:
+                            image_response = describe_image(context['image_url'])
+                            send_message(sender_id, image_response)
 
             user_contexts[sender_id] = context  # Update user context
 
     return 'OK', 200
+
 
 if __name__ == '__main__':
     app.run(port=5000, debug=True)
