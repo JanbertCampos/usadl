@@ -3,7 +3,6 @@ import requests
 import os
 from huggingface_hub import InferenceClient
 import time
-import logging
 
 app = Flask(__name__)
 
@@ -11,14 +10,6 @@ app = Flask(__name__)
 PAGE_ACCESS_TOKEN = os.environ.get('PAGE_ACCESS_TOKEN')
 HUGGINGFACES_API_KEY = os.environ.get('HUGGINGFACES_API_KEY')
 VERIFY_TOKEN = os.environ.get('VERIFY_TOKEN', '12345')
-
-# Instructions for the AI
-AI_INSTRUCTIONS = (
-    "You are JanbertGwapo, a helpful a super intelligent in entire universe and also be polite and kind. "
-)
-
-# Dictionary to store user conversations and topics
-user_contexts = {}
 
 # Initialize the Hugging Face API client
 client = InferenceClient(api_key=HUGGINGFACES_API_KEY)
@@ -38,31 +29,22 @@ def webhook():
         for event in data['entry'][0]['messaging']:
             sender_id = event['sender']['id']
             message_text = event.get('message', {}).get('text')
+            image_url = event.get('message', {}).get('attachments', [{}])[0].get('payload', {}).get('url')
 
-            if message_text:
-                print(f"Received message from {sender_id}: {message_text}")
-
-                # Retrieve or initialize the conversation context
-                context = user_contexts.get(sender_id, {'messages': []})
-                context['messages'].append(message_text)  # Add the new message to the context
+            if message_text or image_url:
+                print(f"Received message from {sender_id}: {message_text if message_text else image_url}")
 
                 # Send typing indicator
                 send_typing_indicator(sender_id)
 
                 # Get response from Hugging Face model
-                response_text = get_huggingface_response(context)
+                response_text = get_huggingface_response(message_text, image_url)
                 print(f"Full response: {response_text}")
 
                 # Send the response back to the user
                 send_message(sender_id, response_text)
 
-                # Store updated context
-                user_contexts[sender_id] = context
-
     return 'OK', 200
-
-# Configure logging
-logging.basicConfig(level=logging.INFO)
 
 def send_message(recipient_id, message_text):
     payload = {
@@ -70,16 +52,11 @@ def send_message(recipient_id, message_text):
         'recipient': {'id': recipient_id},
         'message': {'text': message_text}
     }
-    try:
-        response = requests.post(f'https://graph.facebook.com/v12.0/me/messages?access_token={PAGE_ACCESS_TOKEN}', json=payload)
-        response.raise_for_status()
-        logging.info(f"Message sent successfully to {recipient_id}: {message_text}")
-    except requests.HTTPError as e:
-        if 'No matching user found' in e.response.text:
-            logging.warning(f"User {recipient_id} has not interacted with the bot yet.")
-        else:
-            logging.error(f"Failed to send message: {e.response.text}")
-
+    response = requests.post(f'https://graph.facebook.com/v12.0/me/messages?access_token={PAGE_ACCESS_TOKEN}', json=payload)
+    if response.status_code != 200:
+        print(f"Failed to send message: {response.text}")
+    else:
+        print(f"Message sent successfully to {recipient_id}: {message_text}")
 
 def send_typing_indicator(recipient_id):
     payload = {
@@ -89,15 +66,19 @@ def send_typing_indicator(recipient_id):
     requests.post(f'https://graph.facebook.com/v12.0/me/messages?access_token={PAGE_ACCESS_TOKEN}', json=payload)
     time.sleep(1)  # Simulate typing delay (optional)
 
-def get_huggingface_response(context):
-    # Get the last N messages for context
-    user_messages = context['messages'][-10:]  # Adjust the number as needed
-    messages = [{"role": "user", "content": msg} for msg in user_messages]
+def get_huggingface_response(message_text, image_url):
+    messages = []
+
+    if image_url:
+        messages.append({"type": "image_url", "image_url": {"url": image_url}})
+    
+    if message_text:
+        messages.append({"type": "text", "text": message_text})
 
     try:
         response = client.chat_completion(
-            model="meta-llama/Meta-Llama-3-70B-Instruct",
-            messages=messages,
+            model="meta-llama/Llama-3.2-11B-Vision-Instruct",
+            messages=[{"role": "user", "content": messages}],
             max_tokens=500,
             stream=False
         )
@@ -111,6 +92,6 @@ def get_huggingface_response(context):
     except Exception as e:
         print(f"Error getting response from Hugging Face: {e}")
         return "Sorry, I'm having trouble responding right now."
-        
+
 if __name__ == '__main__':
     app.run(port=5000, debug=True)
