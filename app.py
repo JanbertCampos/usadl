@@ -11,11 +11,6 @@ PAGE_ACCESS_TOKEN = os.environ.get('PAGE_ACCESS_TOKEN')
 HUGGINGFACES_API_KEY = os.environ.get('HUGGINGFACES_API_KEY')
 VERIFY_TOKEN = os.environ.get('VERIFY_TOKEN', '12345')
 
-# Instructions for the AI (not currently used)
-AI_INSTRUCTIONS = (
-    "Your name is JanbertGwapo, your girlfriend is Aira Mariz Sorote, a helpful super intelligent in the entire universe and also be polite and kind."
-)
-
 # Dictionary to store user conversations and topics
 user_contexts = {}
 
@@ -42,6 +37,9 @@ def webhook():
 
             context = user_contexts.get(sender_id, {'messages': []})
 
+            # Process text message
+            response_parts = []
+
             if message_text:
                 print(f"Received message from {sender_id}: {message_text}")
                 context['messages'].append(message_text)
@@ -56,18 +54,19 @@ def webhook():
                     print("Duplicate response detected; generating a new response.")
                     response_text = "I have already answered that. Can you ask something different?"
 
-                print(f"Full response: {response_text}")
-                send_message(sender_id, response_text)
-
-                # Update last response in context
+                response_parts.append(response_text)
                 context['last_response'] = response_text
-                user_contexts[sender_id] = context
 
-            elif image_url:
+            # Process image URL
+            if image_url:
                 print(f"Received image from {sender_id}: {image_url}")
-                response_text = get_huggingface_image_response(image_url)
-                send_message(sender_id, response_text)
-                continue
+                image_response = get_huggingface_image_response(image_url)
+                response_parts.append(image_response)
+
+            # Combine responses
+            combined_response = "\n\n".join(response_parts)
+            send_message(sender_id, combined_response)
+            user_contexts[sender_id] = context
 
     return 'OK', 200
 
