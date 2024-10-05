@@ -2,6 +2,7 @@ from flask import Flask, request
 import requests
 import os
 from huggingface_hub import InferenceClient
+import time
 
 app = Flask(__name__)
 
@@ -10,7 +11,12 @@ PAGE_ACCESS_TOKEN = os.environ.get('PAGE_ACCESS_TOKEN')
 HUGGINGFACES_API_KEY = os.environ.get('HUGGINGFACES_API_KEY')
 VERIFY_TOKEN = os.environ.get('VERIFY_TOKEN', '12345')
 
-# Dictionary to store user conversations and contexts
+# Instructions for the AI
+AI_INSTRUCTIONS = (
+    "You are JanbertGwapo, a helpful a super intelligent in entire universe and also be polite and kind. "
+)
+
+# Dictionary to store user conversations and topics
 user_contexts = {}
 
 # Initialize the Hugging Face API client
@@ -18,7 +24,6 @@ client = InferenceClient(api_key=HUGGINGFACES_API_KEY)
 
 @app.route('/webhook', methods=['GET'])
 def verify():
-    """Verify the webhook for Facebook Messenger."""
     if request.args.get('hub.mode') == 'subscribe' and request.args.get('hub.verify_token') == VERIFY_TOKEN:
         return request.args.get('hub.challenge')
     return 'Invalid verification token', 403
@@ -32,103 +37,71 @@ def webhook():
         for event in data['entry'][0]['messaging']:
             sender_id = event['sender']['id']
             message_text = event.get('message', {}).get('text')
-            image_url = None
 
-            if 'attachments' in event['message']:
-                for attachment in event['message']['attachments']:
-                    if attachment['type'] == 'image':
-                        image_url = attachment['payload']['url']
-                        print(f"Image detected: {image_url}")
+            if message_text:
+                print(f"Received message from {sender_id}: {message_text}")
 
-            # Handle text messages or image attachments
-            if message_text or image_url:
-                response_text = get_response_based_on_message(sender_id, message_text, image_url)
+                # Retrieve or initialize the conversation context
+                context = user_contexts.get(sender_id, {'messages': []})
+                context['messages'].append(message_text)  # Add the new message to the context
+
+                # Send typing indicator
+                send_typing_indicator(sender_id)
+
+                # Get response from Hugging Face model
+                response_text = get_huggingface_response(context)
+                print(f"Full response: {response_text}")
+
+                # Send the response back to the user
                 send_message(sender_id, response_text)
+
+                # Store updated context
+                user_contexts[sender_id] = context
 
     return 'OK', 200
 
-def get_response_based_on_message(sender_id, message_text, image_url):
-    """Get a response based on the message or image."""
-    if sender_id not in user_contexts:
-        user_contexts[sender_id] = {
-            'image_description': None,
-            'art_style': None,
-            'conversation_history': []
-        }
+def send_message(recipient_id, message_text):
+    payload = {
+        'messaging_type': 'RESPONSE',
+        'recipient': {'id': recipient_id},
+        'message': {'text': message_text}
+    }
+    response = requests.post(f'https://graph.facebook.com/v12.0/me/messages?access_token={PAGE_ACCESS_TOKEN}', json=payload)
+    if response.status_code != 200:
+        print(f"Failed to send message: {response.text}")
+    else:
+        print(f"Message sent successfully to {recipient_id}: {message_text}")
 
-    # Store the user's message in conversation history, ensuring it's not empty
-    if message_text:
-        user_contexts[sender_id]['conversation_history'].append(f"You: {message_text}")
+def send_typing_indicator(recipient_id):
+    payload = {
+        'recipient': {'id': recipient_id},
+        'sender_action': 'typing_on'
+    }
+    requests.post(f'https://graph.facebook.com/v12.0/me/messages?access_token={PAGE_ACCESS_TOKEN}', json=payload)
+    time.sleep(1)  # Simulate typing delay (optional)
 
-    if image_url:
-        # Analyze the image and store the description
-        description = analyze_image(image_url)
-        user_contexts[sender_id]['image_description'] = description
-        user_contexts[sender_id]['conversation_history'].append(f"AI: {description}")
-        return description
+def get_huggingface_response(context):
+    # Get the last N messages for context
+    user_messages = context['messages'][-10:]  # Adjust the number as needed
+    messages = [{"role": "user", "content": msg} for msg in user_messages]
 
-    # Generate a response based on the full conversation history
-    response = generate_response(user_contexts[sender_id]['conversation_history'])
-    return response
-
-def generate_response(conversation_history):
-    """Generate a response based on the full conversation history."""
-    if not conversation_history:
-        return "I'm not sure how to answer that. Can you ask something else?"
-
-    last_user_message = conversation_history[-1]
-    previous_ai_responses = [msg for msg in conversation_history if msg.startswith("AI:")]
-
-    if previous_ai_responses:
-        last_ai_response = previous_ai_responses[-1]
-        if "image description" in last_ai_response.lower():
-            return "What would you like to know about the image?"
-        elif "art style" in last_ai_response.lower():
-            return "What aspect of the art style would you like to discuss?"
-
-    return "I'm not sure how to answer that. Can you ask something else?"
-
-def analyze_image(image_url):
-    """Analyze the image and return a description."""
     try:
         response = client.chat_completion(
-            model="meta-llama/Llama-3.2-11B-Vision-Instruct",
-            messages=[
-                {
-                    "role": "user",
-                    "content": [
-                        {"type": "image_url", "image_url": {"url": image_url}},
-                        {"type": "text", "text": "Describe this image."},
-                    ],
-                }
-            ],
+            model="meta-llama/Meta-Llama-3-70B-Instruct",
+            messages=messages,
             max_tokens=500,
-            stream=False,
+            stream=False
         )
 
-        if hasattr(response, 'choices') and len(response.choices) > 0:
-            return response.choices[0].message['content'].strip()
+        text = response.choices[0].message['content'] if response.choices else ""
 
-        return "I'm sorry, I couldn't generate a description for that image."
+        if not text:
+            return "I'm sorry, I couldn't generate a response. Can you please ask something else?"
 
+        return text
     except Exception as e:
-        print(f"Error analyzing image: {e}")
-        return "Sorry, I'm having trouble analyzing that image right now."
-
-def send_message(recipient_id, message_text):
-    """Send a message back to the user."""
-    if message_text:  # Ensure we don't send empty messages
-        payload = {
-            'messaging_type': 'RESPONSE',
-            'recipient': {'id': recipient_id},
-            'message': {'text': message_text}
-        }
-        response = requests.post(f'https://graph.facebook.com/v12.0/me/messages?access_token={PAGE_ACCESS_TOKEN}', json=payload)
-
-        if response.status_code != 200:
-            print(f"Failed to send message: {response.text}")
-        else:
-            print(f"Message sent successfully to {recipient_id}: {message_text}")
-
+        print(f"Error getting response from Hugging Face: {e}")
+        return "Sorry, I'm having trouble responding right now."
+        
 if __name__ == '__main__':
     app.run(port=5000, debug=True)
