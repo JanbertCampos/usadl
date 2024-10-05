@@ -11,10 +11,12 @@ PAGE_ACCESS_TOKEN = os.environ.get('PAGE_ACCESS_TOKEN')
 HUGGINGFACES_API_KEY = os.environ.get('HUGGINGFACES_API_KEY')
 VERIFY_TOKEN = os.environ.get('VERIFY_TOKEN', '12345')
 
+# Instructions for the AI
 AI_INSTRUCTIONS = (
-    "You are JanbertGwapo, a helpful super intelligent being in the entire universe and also be polite and kind."
+    "You are JanbertGwapo, a helpful a super intelligent in entire universe and also be polite and kind. "
 )
 
+# Dictionary to store user conversations and topics
 user_contexts = {}
 
 # Initialize the Hugging Face API client
@@ -39,16 +41,21 @@ def webhook():
             if message_text:
                 print(f"Received message from {sender_id}: {message_text}")
 
+                # Retrieve or initialize the conversation context
                 context = user_contexts.get(sender_id, {'messages': []})
-                context['messages'].append(message_text)
+                context['messages'].append(message_text)  # Add the new message to the context
 
+                # Send typing indicator
                 send_typing_indicator(sender_id)
 
+                # Get response from Hugging Face model
                 response_text = get_huggingface_response(context)
                 print(f"Full response: {response_text}")
 
+                # Send the response back to the user
                 send_message(sender_id, response_text)
 
+                # Store updated context
                 user_contexts[sender_id] = context
 
     return 'OK', 200
@@ -74,23 +81,24 @@ def send_typing_indicator(recipient_id):
     time.sleep(1)  # Simulate typing delay (optional)
 
 def get_huggingface_response(context):
-    user_messages = context['messages'][-10:]
+    # Get the last N messages for context
+    user_messages = context['messages'][-10:]  # Adjust the number as needed
     messages = [{"role": "user", "content": msg} for msg in user_messages]
 
     try:
-        response_text = ""
-        for message in client.chat_completion(
-            model="meta-llama/Meta-Llama-3-70B-Instruct",
+        response = client.chat_completion(
+            model="meta-llama/Meta-Llama-3-8B-Instruct",
             messages=messages,
             max_tokens=500,
-            stream=True
-        ):
-            response_text += message.choices[0].delta.content
+            stream=False
+        )
 
-        if not response_text.strip():
+        text = response.choices[0].message['content'] if response.choices else ""
+
+        if not text:
             return "I'm sorry, I couldn't generate a response. Can you please ask something else?"
 
-        return response_text.strip()
+        return text
     except Exception as e:
         print(f"Error getting response from Hugging Face: {e}")
         return "Sorry, I'm having trouble responding right now."
