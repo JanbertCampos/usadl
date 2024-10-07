@@ -94,8 +94,9 @@ def webhook():
     return jsonify(status="success"), 200
 
 def handle_user_message(message_text):
-    # Call the AI model to get a response
-    result = client.predict(inputs=message_text, api_name="/predict")  # Specify the endpoint here
+    print(f"Received message: {message_text}")  # Debug log
+    result = client.predict(inputs=message_text, top_p=0.9, temperature=0.7, api_name="/predict")  # Adjusted parameters
+    print(f"Response from model: {result}")  # Debug log
     return result[0][0]  # Assuming the response is in the first element of the result tuple
 
 def send_message(recipient_id, message_text):
