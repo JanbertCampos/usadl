@@ -193,5 +193,21 @@ def get_huggingface_response(context, user_question=None):
         print(f"Error getting response from Hugging Face: {e}")
         return "Sorry, I'm having trouble responding right now."
 
+def handle_database_errors(sender_id):
+    error_options = [
+        "Database connection issue",
+        "SQL syntax error",
+        "Data type mismatch error",
+        "Constraint violation error",
+        "Transactions rolled back",
+        "Indexing error",
+        "Query timeout error",
+        "Data integrity error"
+    ]
+
+    options_message = "Here are some possible database errors you might encounter:\n" + "\n".join(f"{i+1}. {error}" for i, error in enumerate(error_options))
+    options_message += "\nPlease type the error name or select a number to learn more about it."
+    send_message(sender_id, options_message)
+
 if __name__ == '__main__':
     app.run(port=5000, debug=True)
