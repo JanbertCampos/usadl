@@ -32,17 +32,11 @@ def webhook():
         for event in data['entry'][0]['messaging']:
             sender_id = event['sender']['id']
             message_text = event.get('message', {}).get('text')
-            postback_payload = event.get('postback', {}).get('payload')
             message_attachments = event.get('message', {}).get('attachments')
 
-            # Check if the user typed "Get Started"
-            if message_text and message_text.lower() == "get started":
+            # Check if the user clicked "Get Started"
+            if 'postback' in event and event['postback']['payload'] == 'GET_STARTED':
                 send_options(sender_id)
-                continue
-
-            # Handle button postback events
-            if postback_payload:
-                handle_postback(sender_id, postback_payload)
                 continue
 
             if message_text:
