@@ -11,6 +11,10 @@ VERIFY_TOKEN = os.environ.get('VERIFY_TOKEN', '12345')
 app = Flask(__name__)
 client = Client("yuntian-deng/ChatGPT4")
 
+@app.route('/', methods=['GET'])
+def index():
+    return "Webhook is running", 200
+
 @app.route('/enable_inputs', methods=['POST'])
 def enable_inputs():
     result = client.predict(api_name="/enable_inputs")
@@ -91,13 +95,17 @@ def webhook():
 
 def handle_user_message(message_text):
     # Call the AI model to get a response
-    # Specify the api_name that you want to use (e.g., "/predict")
-    result = client.predict(inputs=message_text, api_name="/predict")
+    result = client.predict(inputs=message_text, api_name="/predict")  # Specify the endpoint here
     return result[0][0]  # Assuming the response is in the first element of the result tuple
-
 
 def send_message(recipient_id, message_text):
     """Send a message to a user on Facebook Messenger."""
+    if not message_text:
+        message_text = "I didn't understand that."  # Default response if empty
+
+    # Ensure the message is a UTF-8 encoded string
+    message_text = str(message_text).encode('utf-8', 'ignore').decode('utf-8')
+
     url = f'https://graph.facebook.com/v11.0/me/messages?access_token={PAGE_ACCESS_TOKEN}'
     headers = {
         'Content-Type': 'application/json'
