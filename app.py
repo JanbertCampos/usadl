@@ -56,6 +56,7 @@ def handle_postback(sender_id, payload):
     elif payload == "DESCRIBE_IMAGE":
         context['mode'] = 'describe'
         context['image_url'] = None  # Reset image URL
+        context['image_description'] = None  # Reset image description
         send_message(sender_id, "Please upload an image to describe.")
     
     user_contexts[sender_id] = context  # Update user context
@@ -92,6 +93,13 @@ def handle_text_message(sender_id, message_text):
         send_options(sender_id)
         return
 
+    # Handle follow-up questions about the last described image
+    if context['mode'] == 'describe' and context['image_description']:
+        follow_up_response = handle_follow_up_question(context['image_description'], message_text)
+        send_message(sender_id, follow_up_response)
+        return
+
+    # Handle regular messages based on current mode
     if context['mode'] == 'question':
         response_text = get_huggingface_response(context, message_text)
         send_message(sender_id, response_text)
@@ -205,6 +213,14 @@ def get_huggingface_response(context, user_question=None):
     except Exception as e:
         print(f"Error getting response from API: {e}")
         return "Sorry, I'm having trouble responding right now."
+
+def handle_follow_up_question(image_description, user_question):
+    """Handle follow-up questions based on the image description."""
+    # Example logic for follow-up questions
+    if "soldier" in user_question.lower():
+        return f"The soldier depicted seems to come from a military background."
+
+    return "I'm not sure about that. Can you clarify your question?"
 
 if __name__ == '__main__':
     app.run(port=5000, debug=True)
