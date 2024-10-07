@@ -26,7 +26,7 @@ def verify():
 @app.route('/webhook', methods=['POST'])
 def webhook():
     data = request.get_json()
-    print(f"Incoming data: {data}")
+    print(f"Incoming data: {data}")  # Debugging line
 
     if 'entry' in data and len(data['entry']) > 0 and 'messaging' in data['entry'][0]:
         for event in data['entry'][0]['messaging']:
@@ -37,6 +37,9 @@ def webhook():
             # Initialize or retrieve user context
             context = user_contexts.get(sender_id, {'messages': [], 'mode': None})
 
+            print(f"Current context for {sender_id}: {context}")  # Debugging line
+
+            # Handle "get started" command
             if message_text and message_text.lower().strip() == "get started":
                 send_message(sender_id, "Please choose an option:\n1. Ask a question\n2. Describe an image")
                 context['mode'] = "choose_option"
