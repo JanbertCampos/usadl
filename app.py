@@ -11,7 +11,9 @@ VERIFY_TOKEN = os.environ.get('VERIFY_TOKEN', '12345')
 app = Flask(__name__)
 client = Client("yuntian-deng/ChatGPT4")
 
-chat_history = []  # To store conversation history
+# Store recent messages for context
+user_messages = []
+model_responses = []
 
 @app.route('/', methods=['GET'])
 def index():
@@ -43,22 +45,26 @@ def webhook():
     return jsonify(status="success"), 200
 
 def handle_user_message(message_text):
-    global chat_history
-    chat_history.append(message_text)  # Append the user's message to chat history
+    global user_messages, model_responses
     
-    # Construct the model input from chat history
-    model_input = "\n".join(chat_history[-5:])  # Limit to the last 5 messages for context
+    # Append the current user message to the history
+    user_messages.append(message_text)
+    
+    # Construct the model input from the user messages
+    model_input = "\n".join(user_messages[-5:])  # Limit to the last 5 messages
     print(f"Chat history: {model_input}")  # Debug log
-    
+
     # Get a response from the model
     result = client.predict(inputs=model_input, top_p=0.9, temperature=0.7, api_name="/predict")
     response_text = result[0][0] if result else "I didn't understand that."
     
-    # Check for repeated responses
-    if chat_history and response_text == chat_history[-1]:
+    # Check if the response is repetitive
+    if model_responses and response_text == model_responses[-1]:
         response_text = "I'm sorry, can you ask me something else?"
     
-    chat_history.append(response_text)  # Append the model's response to chat history
+    # Append the response to the history
+    model_responses.append(response_text)
+
     print(f"Response from model: {response_text}")  # Debug log
     return response_text
 
