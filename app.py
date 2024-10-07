@@ -6,12 +6,15 @@ import time
 
 app = Flask(__name__)
 
+# Replace with your actual tokens
 PAGE_ACCESS_TOKEN = os.environ.get('PAGE_ACCESS_TOKEN')
 HUGGINGFACES_API_KEY = os.environ.get('HUGGINGFACES_API_KEY')
 VERIFY_TOKEN = os.environ.get('VERIFY_TOKEN', '12345')
 
+# Dictionary to store user conversations and topics
 user_contexts = {}
 
+# Initialize the Hugging Face API client
 client = InferenceClient(api_key=HUGGINGFACES_API_KEY)
 
 @app.route('/webhook', methods=['GET'])
@@ -55,7 +58,6 @@ def handle_postback(sender_id, payload):
 
     user_contexts[sender_id] = context  # Update user context
 
-
 def send_options(recipient_id):
     buttons = [
         {"type": "postback", "title": "Ask a question", "payload": "ASK_QUESTION"},
@@ -78,22 +80,17 @@ def send_options(recipient_id):
 def handle_text_message(sender_id, message_text):
     context = user_contexts.get(sender_id, {'messages': [], 'mode': 'question', 'image_url': None})
 
-    if message_text.lower() == "ask a question":
-        context['mode'] = 'question'
-        send_message(sender_id, "You can now ask your question.")
-    elif message_text.lower() == "describe an image":
-        context['mode'] = 'describe'
-        send_message(sender_id, "Please upload an image to describe.")
+    # Handle regular messages based on current mode
+    if context['mode'] == 'question':
+        response_text = get_huggingface_response(context, message_text)
+        send_message(sender_id, response_text)
+    elif context['mode'] == 'describe' and context['image_url']:
+        response_text = get_huggingface_response(context)
+        send_message(sender_id, response_text)
     else:
-        if context['mode'] == 'question':
-            response_text = get_huggingface_response(context, message_text)
-            send_message(sender_id, response_text)
-        elif context['mode'] == 'describe' and context['image_url']:
-            response_text = get_huggingface_response(context)
-            send_message(sender_id, response_text)
-        else:
-            send_message(sender_id, "Please select 'Ask a question' or 'Describe an image'.")
+        send_message(sender_id, "Please select 'Ask a question' or 'Describe an image'.")
 
+    # Update context with the new message
     context['messages'].append(message_text)
     user_contexts[sender_id] = context
 
@@ -164,12 +161,12 @@ def send_typing_indicator(recipient_id):
     time.sleep(1)
 
 def get_huggingface_response(context, user_question=None):
-    user_messages = context['messages'][-10:]
+    user_messages = context['messages'][-10:]  # Get the last 10 messages
     if user_question:
-        user_messages.append(user_question)
+        user_messages.append(user_question)  # Append the current question
     messages = [{"role": "user", "content": msg} for msg in user_messages]
 
-    print(f"Sending messages to Hugging Face: {messages}")
+    print(f"Sending messages to Hugging Face: {messages}")  # Debug statement
 
     try:
         response = client.chat_completion(
@@ -180,7 +177,7 @@ def get_huggingface_response(context, user_question=None):
         )
 
         text = response.choices[0].message['content'] if response.choices else ""
-        print(f"Response from Hugging Face: {text}")
+        print(f"Response from Hugging Face: {text}")  # Debug statement
 
         if not text:
             return "I'm sorry, I couldn't generate a response. Can you please ask something else?"
@@ -189,10 +186,6 @@ def get_huggingface_response(context, user_question=None):
     except Exception as e:
         print(f"Error getting response from Hugging Face: {e}")
         return "Sorry, I'm having trouble responding right now."
-
-def handle_color_request(sender_id):
-    # Provide guidance when asking about colors
-    send_message(sender_id, "Could you please clarify what colors you're referring to? If you're asking about an image, please upload it again for analysis.")
 
 if __name__ == '__main__':
     app.run(port=5000, debug=True)
