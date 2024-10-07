@@ -34,14 +34,19 @@ def webhook():
         for entry in data['entry']:
             for messaging_event in entry['messaging']:
                 sender_id = messaging_event['sender']['id']  # ID of the user who sent the message
-                message_text = messaging_event['message']['text']  # Text sent by the user
-                
-                # Process the user's message with your AI model
-                response_text = handle_user_message(message_text)
-                
-                # Send the response back to the user
-                send_message(sender_id, response_text)
-    
+
+                # Check if the messaging event contains a message
+                if 'message' in messaging_event and 'text' in messaging_event['message']:
+                    message_text = messaging_event['message']['text']  # Text sent by the user
+                    
+                    # Process the user's message with your AI model
+                    response_text = handle_user_message(message_text)
+                    
+                    # Send the response back to the user
+                    send_message(sender_id, response_text)
+                else:
+                    print(f"Received unsupported message type from user {sender_id}")
+
     return jsonify(status="success"), 200
 
 def handle_user_message(message_text):
@@ -61,7 +66,7 @@ def handle_user_message(message_text):
     # Check if the response is repetitive
     if model_responses and response_text == model_responses[-1]:
         response_text = "I'm sorry, can you ask me something else?"
-    
+
     # Append the response to the history
     model_responses.append(response_text)
 
