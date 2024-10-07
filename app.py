@@ -78,10 +78,10 @@ def handle_text_message(sender_id, message_text):
     context = user_contexts.get(sender_id, {'messages': [], 'mode': 'question', 'image_url': None})
 
     # Check if the user is choosing a mode based on the buttons
-    if message_text.lower() == "ask a question":
+    if message_text.lower() == "Ask a question":
         context['mode'] = 'question'
         send_message(sender_id, "You can now ask your question.")
-    elif message_text.lower() == "describe an image":
+    elif message_text.lower() == "Describe an image":
         context['mode'] = 'describe'
         send_message(sender_id, "Please upload an image to describe.")
     else:
