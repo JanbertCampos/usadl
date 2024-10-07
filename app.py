@@ -36,20 +36,17 @@ def webhook():
                 sender_id = messaging_event['sender']['id']  # ID of the user who sent the message
 
                 # Check if the messaging event contains a message
-                if 'message' in messaging_event:
-                    if 'text' in messaging_event['message']:
-                        message_text = messaging_event['message']['text']  # Text sent by the user
-                        print(f"Received message from {sender_id}: {message_text}")  # Debug log
+                if 'message' in messaging_event and 'text' in messaging_event['message']:
+                    message_text = messaging_event['message']['text']  # Text sent by the user
+                    print(f"Received message from {sender_id}: {message_text}")  # Debug log
 
-                        # Process the user's message with your AI model
-                        response_text = handle_user_message(sender_id, message_text)
+                    # Process the user's message with your AI model
+                    response_text = handle_user_message(sender_id, message_text)
 
-                        # Send the response back to the user
-                        send_message(sender_id, response_text)
-                    else:
-                        print(f"Received unsupported message type from user {sender_id}: {messaging_event['message']}")
+                    # Send the response back to the user
+                    send_message(sender_id, response_text)
                 else:
-                    print(f"Received unsupported message type from user {sender_id}")
+                    print(f"Received unsupported message type from user {sender_id}: {messaging_event['message']}")
 
     return jsonify(status="success"), 200
 
@@ -69,11 +66,15 @@ def handle_user_message(sender_id, message_text):
     print(f"Chat history: {model_input}")  # Debug log
 
     # Get a response from the model
-    result = client.predict(inputs=model_input, top_p=0.9, temperature=0.7, api_name="/predict")
-    response_text = result[0][0] if result and isinstance(result, list) else "I didn't understand that."
+    try:
+        result = client.predict(inputs=model_input, top_p=0.9, temperature=0.7, api_name="/predict")
+        response_text = result[0][0] if result and isinstance(result, list) else "I didn't understand that."
+    except Exception as e:
+        print(f"Error calling the AI model: {e}")
+        response_text = "I'm having trouble responding right now."
 
-    # Clean up the response to remove brackets and quotes
-    response_text = response_text.strip().strip("[]'\"")
+    # Clean up the response to remove any brackets and quotes
+    response_text = response_text.replace("'", "").replace("[", "").replace("]", "").strip()
 
     # Check if the response is repetitive
     if model_responses[sender_id] and response_text == model_responses[sender_id][-1]:
