@@ -32,11 +32,17 @@ def webhook():
         for event in data['entry'][0]['messaging']:
             sender_id = event['sender']['id']
             message_text = event.get('message', {}).get('text')
+            postback_payload = event.get('postback', {}).get('payload')
             message_attachments = event.get('message', {}).get('attachments')
 
             # Check if the user typed "Get Started"
             if message_text and message_text.lower() == "get started":
                 send_options(sender_id)
+                continue
+
+            # Handle button postback events
+            if postback_payload:
+                handle_postback(sender_id, postback_payload)
                 continue
 
             if message_text:
@@ -74,26 +80,30 @@ def send_options(recipient_id):
 
     send_message(recipient_id, options_message)
 
+def handle_postback(sender_id, postback_payload):
+    context = user_contexts.get(sender_id, {'messages': [], 'mode': 'question', 'image_url': None})
+
+    if postback_payload == "ASK_QUESTION":
+        context['mode'] = 'question'
+        send_message(sender_id, "You can now ask your question.")
+    elif postback_payload == "DESCRIBE_IMAGE":
+        context['mode'] = 'describe'
+        send_message(sender_id, "Please upload an image to describe.")
+
+    user_contexts[sender_id] = context  # Store updated context
+
 def handle_text_message(sender_id, message_text):
     context = user_contexts.get(sender_id, {'messages': [], 'mode': 'question', 'image_url': None})
 
-    # Check if the user is choosing a mode based on the buttons
-    if message_text.lower() == "Ask a question":
-        context['mode'] = 'question'
-        send_message(sender_id, "You can now ask your question.")
-    elif message_text.lower() == "Describe an image":
-        context['mode'] = 'describe'
-        send_message(sender_id, "Please upload an image to describe.")
+    # Handle regular messages based on current mode
+    if context['mode'] == 'question':
+        response_text = get_huggingface_response(context, message_text)
+        send_message(sender_id, response_text)
+    elif context['mode'] == 'describe' and context['image_url']:
+        response_text = get_huggingface_response(context)
+        send_message(sender_id, response_text)
     else:
-        # Handle regular messages based on current mode
-        if context['mode'] == 'question':
-            response_text = get_huggingface_response(context, message_text)
-            send_message(sender_id, response_text)
-        elif context['mode'] == 'describe' and context['image_url']:
-            response_text = get_huggingface_response(context)
-            send_message(sender_id, response_text)
-        else:
-            send_message(sender_id, "Please select 'Ask a question' or 'Describe an image'.")
+        send_message(sender_id, "Please select 'Ask a question' or 'Describe an image'.")
 
     # Update context with the new message
     context['messages'].append(message_text)
