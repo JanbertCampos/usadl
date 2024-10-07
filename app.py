@@ -80,6 +80,11 @@ def send_options(recipient_id):
 def handle_text_message(sender_id, message_text):
     context = user_contexts.get(sender_id, {'messages': [], 'mode': 'question', 'image_url': None})
 
+    # Check for "Get Started" input
+    if message_text.lower() == "get started":
+        send_options(sender_id)  # Show options
+        return  # Exit the function after sending options
+
     # Handle regular messages based on current mode
     if context['mode'] == 'question':
         response_text = get_huggingface_response(context, message_text)
