@@ -12,9 +12,7 @@ HUGGINGFACES_API_KEY = os.environ.get('HUGGINGFACES_API_KEY')
 VERIFY_TOKEN = os.environ.get('VERIFY_TOKEN', '12345')
 
 # Instructions for the AI
-AI_INSTRUCTIONS = (
-    "You are JanbertGwapo, a helpful a super intelligent in entire universe and also be polite and kind. "
-)
+AI_INSTRUCTIONS = "You are JanbertGwapo, a helpful super intelligent being in the universe and also be polite and kind."
 
 # Dictionary to store user conversations and topics
 user_contexts = {}
@@ -33,7 +31,7 @@ def webhook():
     data = request.get_json()
     print(f"Incoming data: {data}")
 
-    if 'messaging' in data['entry'][0]:
+    if 'entry' in data and len(data['entry']) > 0 and 'messaging' in data['entry'][0]:
         for event in data['entry'][0]['messaging']:
             sender_id = event['sender']['id']
             message_text = event.get('message', {}).get('text')
@@ -41,21 +39,38 @@ def webhook():
             if message_text:
                 print(f"Received message from {sender_id}: {message_text}")
 
-                # Retrieve or initialize the conversation context
-                context = user_contexts.get(sender_id, {'messages': []})
-                context['messages'].append(message_text)  # Add the new message to the context
+                context = user_contexts.get(sender_id, {'messages': [], 'mode': None})
+                
+                # Handle "get started" command
+                if message_text.lower() == "get started":
+                    send_message(sender_id, "Please choose an option:\n1. Ask a question\n2. Describe an image")
+                    context['mode'] = "choose_option"
+                elif context.get('mode') == "choose_option":
+                    if message_text.strip() == "1":
+                        context['mode'] = "ask_question"
+                        send_message(sender_id, "You can now ask your question.")
+                    elif message_text.strip() == "2":
+                        context['mode'] = "describe_image"
+                        send_message(sender_id, "Please provide the image URL.")
+                    else:
+                        send_message(sender_id, "Invalid option. Please type 'get started' to see options again.")
+                elif context['mode'] == "ask_question":
+                    context['messages'].append(message_text)
+                    send_typing_indicator(sender_id)
+                    response_text = get_huggingface_response(context, question=True)
+                    send_message(sender_id, response_text)
+                elif context['mode'] == "describe_image":
+                    # Assume the user sends an image URL
+                    if is_valid_image_url(message_text):
+                        context['messages'].append(message_text)
+                        send_typing_indicator(sender_id)
+                        response_text = get_huggingface_response(context, question=False, image_url=message_text)
+                        send_message(sender_id, response_text)
+                    else:
+                        send_message(sender_id, "Please provide a valid image URL.")
+                else:
+                    send_message(sender_id, "Please type 'get started' to see options.")
 
-                # Send typing indicator
-                send_typing_indicator(sender_id)
-
-                # Get response from Hugging Face model
-                response_text = get_huggingface_response(context)
-                print(f"Full response: {response_text}")
-
-                # Send the response back to the user
-                send_message(sender_id, response_text)
-
-                # Store updated context
                 user_contexts[sender_id] = context
 
     return 'OK', 200
@@ -78,30 +93,48 @@ def send_typing_indicator(recipient_id):
         'sender_action': 'typing_on'
     }
     requests.post(f'https://graph.facebook.com/v12.0/me/messages?access_token={PAGE_ACCESS_TOKEN}', json=payload)
-    time.sleep(1)  # Simulate typing delay (optional)
+    time.sleep(1)
 
-def get_huggingface_response(context):
-    # Get the last N messagses for context
-    user_messages = context['messages'][-10:]  # Adjust the number as needed
-    messages = [{"role": "user", "content": msg} for msg in user_messages]
-
-    try:
+def get_huggingface_response(context, question=True, image_url=None):
+    if question:
+        user_messages = context['messages'][-10:]  # Get the last N messages
+        messages = [{"role": "user", "content": msg} for msg in user_messages]
+        
         response = client.chat_completion(
-            model="Qwen/Qwen2.5-72B-Instruct",
+            model="meta-llama/Llama-3.2-3B-Instruct",
             messages=messages,
             max_tokens=500,
             stream=False
         )
-
-        text = response.choices[0].message['content'] if response.choices else ""
-
-        if not text:
-            return "I'm sorry, I couldn't generate a response. Can you please ask something else?"
-
-        return text
-    except Exception as e:
-        print(f"Error getting response from Hugging Face: {e}")
-        return "Sorry, I'm having trouble responding right now."
         
+        text = response.choices[0].message['content'] if response.choices else ""
+        return text or "I'm sorry, I couldn't generate a response."
+    
+    if image_url:
+        messages = [
+            {"role": "user", "content": [
+                {"type": "image_url", "image_url": {"url": image_url}},
+                {"type": "text", "text": "Describe this image in one sentence."}
+            ]}
+        ]
+        
+        response = client.chat_completion(
+            model="meta-llama/Llama-3.2-11B-Vision-Instruct",
+            messages=messages,
+            max_tokens=500,
+            stream=True,
+        )
+        
+        text = ""
+        for message in response:
+            text += message.choices[0].delta.content
+        return text or "I'm sorry, I couldn't describe the image."
+    
+    return "Invalid request."
+
+def is_valid_image_url(url):
+    # Implement your logic to validate the URL, e.g., check if it ends with an image format
+    return url.lower().endswith(('.png', '.jpg', '.jpeg', '.gif'))
+
 if __name__ == '__main__':
     app.run(port=5000, debug=True)
