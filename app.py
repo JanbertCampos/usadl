@@ -86,18 +86,13 @@ def handle_text_message(sender_id, message_text):
         send_options(sender_id)
         return  # Exit the function after sending options
 
-    # Handle regular messages based on current mode
+      # Handle regular messages based on current mode
     if context['mode'] == 'question':
         response_text = get_huggingface_response(context, message_text)
         send_message(sender_id, response_text)
-    elif context['mode'] == 'describe':
-        # Check if the user is supposed to upload an image
-        if message_text and context['image_url'] is None:
-            send_message(sender_id, "Please upload an image to describe.")
-        elif context['image_url']:
-            # If an image URL is already present, process it
-            response_text = get_huggingface_response(context)
-            send_message(sender_id, response_text)
+    elif context['mode'] == 'describe' and context['image_url']:
+        response_text = get_huggingface_response(context)
+        send_message(sender_id, response_text)
     else:
         send_message(sender_id, "Please select 'Ask a question' or 'Describe an image'.")
 
