@@ -32,6 +32,7 @@ def webhook():
         for event in data['entry'][0]['messaging']:
             sender_id = event['sender']['id']
             message_text = event.get('message', {}).get('text')
+            attachments = event.get('message', {}).get('attachments', [])
             postback_payload = event.get('postback', {}).get('payload')
 
             # Handle button click payloads
@@ -43,6 +44,10 @@ def webhook():
             if message_text:
                 print(f"Received message from {sender_id}: {message_text}")
                 handle_text_message(sender_id, message_text)
+            
+            # Handle image messages
+            if attachments:
+                handle_image_message(sender_id, attachments)
 
     return 'OK', 200
 
@@ -91,6 +96,7 @@ def handle_text_message(sender_id, message_text):
         response_text = get_huggingface_response(context, message_text)
         send_message(sender_id, response_text)
     elif context['mode'] == 'describe':
+        # Prompt the user to upload an image, or if they mention an image, it should be handled in the image message handler
         send_message(sender_id, "Please upload an image to describe.")
     else:
         send_message(sender_id, "Please select 'Ask a question' or 'Describe an image'.")
@@ -100,20 +106,23 @@ def handle_text_message(sender_id, message_text):
     user_contexts[sender_id] = context
 
 def handle_image_message(sender_id, attachments):
-    image_url = attachments[0]['payload']['url']
-    print(f"Received image from {sender_id}: {image_url}")
+    if attachments and attachments[0]['type'] == 'image':
+        image_url = attachments[0]['payload']['url']
+        print(f"Received image from {sender_id}: {image_url}")
 
-    send_typing_indicator(sender_id)
+        send_typing_indicator(sender_id)
 
-    response_text = analyze_image(image_url)
+        response_text = analyze_image(image_url)
 
-    context = user_contexts.get(sender_id, {'messages': [], 'mode': 'describe', 'image_url': None})
-    context['messages'].append(response_text)
-    context['image_url'] = image_url
-    context['mode'] = 'describe'
+        context = user_contexts.get(sender_id, {'messages': [], 'mode': 'describe', 'image_url': None})
+        context['messages'].append(response_text)
+        context['image_url'] = image_url
+        context['mode'] = 'describe'
 
-    user_contexts[sender_id] = context
-    send_message(sender_id, response_text)
+        user_contexts[sender_id] = context
+        send_message(sender_id, response_text)
+    else:
+        send_message(sender_id, "I can only describe images. Please upload an image.")
 
 def analyze_image(image_url):
     try:
