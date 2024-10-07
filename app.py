@@ -11,100 +11,51 @@ VERIFY_TOKEN = os.environ.get('VERIFY_TOKEN', '12345')
 app = Flask(__name__)
 client = Client("yuntian-deng/ChatGPT4")
 
+chat_history = []  # To store conversation history
+
 @app.route('/', methods=['GET'])
 def index():
     return "Webhook is running", 200
 
-@app.route('/enable_inputs', methods=['POST'])
-def enable_inputs():
-    result = client.predict(api_name="/enable_inputs")
-    return jsonify(result)
-
-@app.route('/reset_textbox', methods=['POST'])
-def reset_textbox():
-    result = client.predict(api_name="/reset_textbox")
-    return jsonify(result)
-
-@app.route('/predict', methods=['POST'])
-def predict():
-    data = request.json
-    inputs = data.get('inputs', "Hello!!")
-    top_p = data.get('top_p', 1.0)
-    temperature = data.get('temperature', 1.0)
-    chat_counter = data.get('chat_counter', 0)
-    chatbot = data.get('chatbot', [])
-    
-    result = client.predict(
-        inputs=inputs,
-        top_p=top_p,
-        temperature=temperature,
-        chat_counter=chat_counter,
-        chatbot=chatbot,
-        api_name="/predict"
-    )
-    return jsonify(result)
-
-@app.route('/reset_textbox_1', methods=['POST'])
-def reset_textbox_1():
-    result = client.predict(api_name="/reset_textbox_1")
-    return jsonify(result)
-
-@app.route('/predict_1', methods=['POST'])
-def predict_1():
-    data = request.json
-    inputs = data.get('inputs', "Hello!!")
-    top_p = data.get('top_p', 1.0)
-    temperature = data.get('temperature', 1.0)
-    chat_counter = data.get('chat_counter', 0)
-    chatbot = data.get('chatbot', [])
-    
-    result = client.predict(
-        inputs=inputs,
-        top_p=top_p,
-        temperature=temperature,
-        chat_counter=chat_counter,
-        chatbot=chatbot,
-        api_name="/predict_1"
-    )
-    return jsonify(result)
-
 @app.route('/webhook', methods=['GET', 'POST'])
 def webhook():
     if request.method == 'GET':
-        # Verification token for Facebook Webhook
         token = request.args.get('hub.verify_token')
         if token == VERIFY_TOKEN:
             return request.args.get('hub.challenge')
         return "Verification token mismatch", 403
 
-    # Handle POST requests from the webhook
     data = request.json
     if 'object' in data and data['object'] == 'page':
         for entry in data['entry']:
             for messaging_event in entry['messaging']:
-                sender_id = messaging_event['sender']['id']  # ID of the user who sent the message
-                message_text = messaging_event['message']['text']  # Text sent by the user
+                sender_id = messaging_event['sender']['id']
+                message_text = messaging_event['message']['text']
                 
-                # Process the user's message with your AI model
+                # Process the user's message
                 response_text = handle_user_message(message_text)
-                
-                # Send the response back to the user
                 send_message(sender_id, response_text)
     
     return jsonify(status="success"), 200
 
 def handle_user_message(message_text):
-    print(f"Received message: {message_text}")  # Debug log
-    result = client.predict(inputs=message_text, top_p=0.9, temperature=0.7, api_name="/predict")  # Adjusted parameters
-    print(f"Response from model: {result}")  # Debug log
-    return result[0][0]  # Assuming the response is in the first element of the result tuple
+    global chat_history
+    chat_history.append(message_text)  # Append the user's message to chat history
+    print(f"Chat history: {chat_history}")  # Debug log
+
+    # Generate the input for the model based on chat history
+    model_input = "\n".join(chat_history)  # Join messages with new lines for context
+    result = client.predict(inputs=model_input, top_p=0.9, temperature=0.7, api_name="/predict")
+    
+    # Assuming the model returns a response as the last part of the conversation
+    response_text = result[0][0] if result else "I didn't understand that."
+    chat_history.append(response_text)  # Append the model's response to chat history
+    print(f"Response from model: {response_text}")  # Debug log
+    return response_text
 
 def send_message(recipient_id, message_text):
-    """Send a message to a user on Facebook Messenger."""
     if not message_text:
-        message_text = "I didn't understand that."  # Default response if empty
-
-    # Ensure the message is a UTF-8 encoded string
+        message_text = "I didn't understand that."
     message_text = str(message_text).encode('utf-8', 'ignore').decode('utf-8')
 
     url = f'https://graph.facebook.com/v11.0/me/messages?access_token={PAGE_ACCESS_TOKEN}'
