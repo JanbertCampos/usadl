@@ -73,7 +73,7 @@ def handle_user_message(sender_id, message_text):
     response_text = result[0][0] if result and isinstance(result, list) else "I didn't understand that."
 
     # Clean up the response to remove brackets and quotes
-    response_text = response_text.replace("'", "").replace("[", "").replace("]", "").strip()
+    response_text = response_text.strip().strip("[]'\"")
 
     # Check if the response is repetitive
     if model_responses[sender_id] and response_text == model_responses[sender_id][-1]:
