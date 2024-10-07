@@ -22,23 +22,32 @@ def index():
 @app.route('/webhook', methods=['GET', 'POST'])
 def webhook():
     if request.method == 'GET':
+        # Verification token for Facebook Webhook
         token = request.args.get('hub.verify_token')
         if token == VERIFY_TOKEN:
             return request.args.get('hub.challenge')
         return "Verification token mismatch", 403
 
+    # Handle POST requests from the webhook
     data = request.json
     if 'object' in data and data['object'] == 'page':
         for entry in data['entry']:
             for messaging_event in entry['messaging']:
-                sender_id = messaging_event['sender']['id']
-                
-                if 'message' in messaging_event and 'text' in messaging_event['message']:
-                    message_text = messaging_event['message']['text']
-                    print(f"Received message from {sender_id}: {message_text}")
+                sender_id = messaging_event['sender']['id']  # ID of the user who sent the message
 
-                    response_text = handle_user_message(sender_id, message_text)
-                    send_message(sender_id, response_text)
+                # Check if the messaging event contains a message
+                if 'message' in messaging_event:
+                    if 'text' in messaging_event['message']:
+                        message_text = messaging_event['message']['text']  # Text sent by the user
+                        print(f"Received message from {sender_id}: {message_text}")  # Debug log
+
+                        # Process the user's message with your AI model
+                        response_text = handle_user_message(sender_id, message_text)
+
+                        # Send the response back to the user
+                        send_message(sender_id, response_text)
+                    else:
+                        print(f"Received unsupported message type from user {sender_id}: {messaging_event['message']}")
                 else:
                     print(f"Received unsupported message type from user {sender_id}")
 
@@ -47,55 +56,68 @@ def webhook():
 def handle_user_message(sender_id, message_text):
     global user_messages, model_responses
 
+    # Initialize user context if not present
     if sender_id not in user_messages:
         user_messages[sender_id] = []
         model_responses[sender_id] = []
 
+    # Append the current user message to the history
     user_messages[sender_id].append(message_text)
 
-    # Use the last 5 messages to create the model input
-    model_input = "\n".join(user_messages[sender_id][-5:])  
-    print(f"Chat history: {model_input}")
+    # Construct the model input from the user messages
+    model_input = "\n".join(user_messages[sender_id][-5:])  # Limit to the last 5 messages
+    print(f"Chat history: {model_input}")  # Debug log
 
+    # Get a response from the model
     try:
-        # Call the predict API with appropriate parameters
         result = client.predict(
             inputs=model_input,
             top_p=0.9,
             temperature=0.7,
             chat_counter=len(user_messages[sender_id]),
-            chatbot=user_messages[sender_id][-5:],  # Use last 5 messages
+            chatbot=user_messages[sender_id][-5:],
             api_name="/predict"
         )
-        
-        # Extract the first element of the result, which contains the model response
-        response_text = result[0][0] if isinstance(result, tuple) else "I didn't understand that."
+
+        if isinstance(result, tuple) and len(result) > 0:
+            response_text = result[0][0] if isinstance(result[0], tuple) else "I didn't understand that."
+        else:
+            response_text = "I'm having trouble responding right now."
     except Exception as e:
         print(f"Error calling the AI model: {e}")
         response_text = "I'm having trouble responding right now."
 
+    # Clean up the response to remove brackets and quotes
     response_text = response_text.replace("'", "").replace("[", "").replace("]", "").strip()
 
-    # Add a fallback mechanism for repeated misunderstandings
+    # Check if the response is repetitive
     if model_responses[sender_id] and response_text == model_responses[sender_id][-1]:
         response_text = "I'm sorry, can you ask me something else?"
 
+    # Append the response to the history
     model_responses[sender_id].append(response_text)
 
-    print(f"Response from model: {response_text}")
+    print(f"Response from model: {response_text}")  # Debug log
     return response_text
 
 def send_message(recipient_id, message_text):
+    """Send a message to a user on Facebook Messenger."""
     if not message_text:
-        message_text = "I didn't understand that."
+        message_text = "I didn't understand that."  # Default response if empty
 
+    # Ensure the message is a UTF-8 encoded string
     message_text = str(message_text).encode('utf-8', 'ignore').decode('utf-8')
 
     url = f'https://graph.facebook.com/v11.0/me/messages?access_token={PAGE_ACCESS_TOKEN}'
-    headers = {'Content-Type': 'application/json'}
-    payload = {'recipient': {'id': recipient_id}, 'message': {'text': message_text}}
+    headers = {
+        'Content-Type': 'application/json'
+    }
+    payload = {
+        'recipient': {'id': recipient_id},
+        'message': {'text': message_text}
+    }
 
-    print(f"Sending message to {recipient_id}: {message_text}")
+    print(f"Sending message to {recipient_id}: {message_text}")  # Debug log
 
     response = requests.post(url, json=payload, headers=headers)
     if response.status_code != 200:
