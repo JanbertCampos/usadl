@@ -51,12 +51,12 @@ def send_options(recipient_id):
     buttons = [
         {
             "type": "postback",
-            "title": "Ask a question",
+            "title": "ask a question",
             "payload": "ASK_QUESTION"
         },
         {
             "type": "postback",
-            "title": "Describe an image",
+            "title": "describe an image",
             "payload": "DESCRIBE_IMAGE"
         }
     ]
