@@ -184,7 +184,7 @@ def get_huggingface_response(context, user_question=None):
 
         return text
     except Exception as e:
-        print(f"Error getting response from Hugging Face: {e}")
+        print(f"Error getting response from API: {e}")
         return "Sorry, I'm having trouble responding right now."
 
 if __name__ == '__main__':
