@@ -41,19 +41,32 @@ def webhook():
 
             if message_text:
                 print(f"Received message from {sender_id}: {message_text}")
-                handle_message(sender_id, message_text)
+                handle_text_message(sender_id, message_text)
             elif message_attachments:
                 handle_image_message(sender_id, message_attachments)
 
     return 'OK', 200
 
-def handle_message(sender_id, message_text):
-    context = user_contexts.get(sender_id, {'messages': []})
-    context['messages'].append(message_text)
-    send_typing_indicator(sender_id)
-    
-    response_text = get_huggingface_response(context)
-    send_message(sender_id, response_text)
+def handle_text_message(sender_id, message_text):
+    context = user_contexts.get(sender_id, {'messages': [], 'mode': 'question', 'image_url': None})
+
+    # Check if the user is choosing a mode
+    if message_text.lower() == "ask a question":
+        context['mode'] = 'question'
+        send_message(sender_id, "You can now ask your question.")
+    elif message_text.lower() == "describe an image":
+        context['mode'] = 'describe'
+        send_message(sender_id, "Please upload an image to describe.")
+    else:
+        # Handle regular messages based on current mode
+        if context['mode'] == 'question':
+            response_text = get_huggingface_response(context)
+            send_message(sender_id, response_text)
+        elif context['mode'] == 'describe' and context['image_url']:
+            response_text = get_huggingface_response(context)
+            send_message(sender_id, response_text)
+        else:
+            send_message(sender_id, "Please select 'Ask a question' or 'Describe an image'.")
 
     user_contexts[sender_id] = context
 
@@ -65,11 +78,13 @@ def handle_image_message(sender_id, attachments):
 
     response_text = analyze_image(image_url)
 
-    # Update the user context with the image analysis result
-    context = user_contexts.get(sender_id, {'messages': []})
+    # Update context with the image URL and switch to 'describe' mode
+    context = user_contexts.get(sender_id, {'messages': [], 'mode': 'describe'})
     context['messages'].append(response_text)  # Add the image description to context
-    user_contexts[sender_id] = context  # Store updated context
+    context['image_url'] = image_url  # Store the image URL
+    context['mode'] = 'describe'  # Set mode to describe
 
+    user_contexts[sender_id] = context  # Store updated context
     send_message(sender_id, response_text)
 
 def analyze_image(image_url):
