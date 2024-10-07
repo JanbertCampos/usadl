@@ -11,9 +11,8 @@ VERIFY_TOKEN = os.environ.get('VERIFY_TOKEN', '12345')
 app = Flask(__name__)
 client = Client("yuntian-deng/ChatGPT4")
 
-# Store recent messages for context
-user_messages = []
-model_responses = []
+# Dictionary to store user conversations
+user_contexts = {}
 
 @app.route('/', methods=['GET'])
 def index():
@@ -40,7 +39,7 @@ def webhook():
                     message_text = messaging_event['message']['text']  # Text sent by the user
                     
                     # Process the user's message with your AI model
-                    response_text = handle_user_message(message_text)
+                    response_text = handle_user_message(sender_id, message_text)
                     
                     # Send the response back to the user
                     send_message(sender_id, response_text)
@@ -49,14 +48,19 @@ def webhook():
 
     return jsonify(status="success"), 200
 
-def handle_user_message(message_text):
-    global user_messages, model_responses
-    
-    # Append the current user message to the history
-    user_messages.append(message_text)
+def handle_user_message(sender_id, message_text):
+    # Initialize user context if not present
+    if sender_id not in user_contexts:
+        user_contexts[sender_id] = {
+            'messages': [],
+            'responses': []
+        }
+
+    user_context = user_contexts[sender_id]
+    user_context['messages'].append(message_text)
     
     # Construct the model input from the user messages
-    model_input = "\n".join(user_messages[-5:])  # Limit to the last 5 messages
+    model_input = "\n".join(user_context['messages'][-5:])  # Limit to the last 5 messages
     print(f"Chat history: {model_input}")  # Debug log
 
     # Get a response from the model
@@ -64,11 +68,11 @@ def handle_user_message(message_text):
     response_text = result[0][0] if result else "I didn't understand that."
     
     # Check if the response is repetitive
-    if model_responses and response_text == model_responses[-1]:
+    if user_context['responses'] and response_text == user_context['responses'][-1]:
         response_text = "I'm sorry, can you ask me something else?"
 
     # Append the response to the history
-    model_responses.append(response_text)
+    user_context['responses'].append(response_text)
 
     print(f"Response from model: {response_text}")  # Debug log
     return response_text
