@@ -91,8 +91,10 @@ def webhook():
 
 def handle_user_message(message_text):
     # Call the AI model to get a response
-    result = client.predict(inputs=message_text)
+    # Specify the api_name that you want to use (e.g., "/predict")
+    result = client.predict(inputs=message_text, api_name="/predict")
     return result[0][0]  # Assuming the response is in the first element of the result tuple
+
 
 def send_message(recipient_id, message_text):
     """Send a message to a user on Facebook Messenger."""
