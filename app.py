@@ -69,7 +69,10 @@ def handle_user_message(sender_id, message_text):
 
     # Get a response from the model
     result = client.predict(inputs=model_input, top_p=0.9, temperature=0.7, api_name="/predict")
-    response_text = result[0][0] if result else "I didn't understand that."
+    response_text = result[0][0] if result and isinstance(result, list) else "I didn't understand that."
+
+    # Clean up the response to remove brackets and quotes
+    response_text = response_text.replace("'", "").replace("[", "").replace("]", "").strip()
 
     # Check if the response is repetitive
     if model_responses[sender_id] and response_text == model_responses[sender_id][-1]:
