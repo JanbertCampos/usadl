@@ -11,11 +11,6 @@ PAGE_ACCESS_TOKEN = os.environ.get('PAGE_ACCESS_TOKEN')
 HUGGINGFACES_API_KEY = os.environ.get('HUGGINGFACES_API_KEY')
 VERIFY_TOKEN = os.environ.get('VERIFY_TOKEN', '12345')
 
-# Instructions for the AI
-AI_INSTRUCTIONS = (
-    "You are JanbertGwapo, a helpful super intelligent being in the entire universe, and also be polite and kind."
-)
-
 # Dictionary to store user conversations and topics
 user_contexts = {}
 
@@ -40,10 +35,9 @@ def webhook():
             message_attachments = event.get('message', {}).get('attachments')
 
             # Check if the user clicked "Get Started"
-            if 'postback' in event:
-                if event['postback']['payload'] == 'GET_STARTED':
-                    send_options(sender_id)
-                    continue
+            if 'postback' in event and event['postback']['payload'] == 'GET_STARTED':
+                send_options(sender_id)
+                continue
 
             if message_text:
                 print(f"Received message from {sender_id}: {message_text}")
@@ -62,7 +56,11 @@ def send_options(recipient_id):
     send_message(recipient_id, options_message)
 
 def handle_text_message(sender_id, message_text):
-    context = user_contexts.get(sender_id, {'messages': [], 'mode': 'question', 'image_url': None})
+    context = user_contexts.get(sender_id, {'messages': [], 'mode': None, 'image_url': None})
+
+    # Initialize context if needed
+    if context['mode'] is None:
+        context['mode'] = 'question'  # Default mode
 
     # Check if the user is choosing a mode
     if message_text.lower() == "ask a question":
@@ -93,7 +91,7 @@ def handle_image_message(sender_id, attachments):
     response_text = analyze_image(image_url)
 
     # Update context with the image URL and switch to 'describe' mode
-    context = user_contexts.get(sender_id, {'messages': [], 'mode': 'describe'})
+    context = user_contexts.get(sender_id, {'messages': [], 'mode': 'describe', 'image_url': None})
     context['messages'].append(response_text)  # Add the image description to context
     context['image_url'] = image_url  # Store the image URL
     context['mode'] = 'describe'  # Set mode to describe
