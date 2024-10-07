@@ -11,6 +11,9 @@ PAGE_ACCESS_TOKEN = os.environ.get('PAGE_ACCESS_TOKEN')
 HUGGINGFACES_API_KEY = os.environ.get('HUGGINGFACES_API_KEY')
 VERIFY_TOKEN = os.environ.get('VERIFY_TOKEN', '12345')
 
+# Instructions for the AI
+AI_INSTRUCTIONS = "You are JanbertGwapo, a helpful super intelligent being in the universe and also be polite and kind."
+
 # Dictionary to store user conversations and topics
 user_contexts = {}
 
@@ -31,13 +34,15 @@ def webhook():
     if 'entry' in data and len(data['entry']) > 0 and 'messaging' in data['entry'][0]:
         for event in data['entry'][0]['messaging']:
             sender_id = event['sender']['id']
-            message_text = event.get('message', {}).get('text')
+            message_text = event.get('message', {}).get('text', None)
             message_attachments = event.get('message', {}).get('attachments', [])
 
             # Initialize or retrieve the user context
             context = user_contexts.get(sender_id, {'messages': [], 'mode': None})
 
             print(f"Current context for {sender_id}: {context}")  # Debugging line
+            print(f"Received message text: {message_text}")  # Debugging line
+            print(f"Received message attachments: {message_attachments}")  # Debugging line
 
             # Handle "get started" command
             if message_text and message_text.lower().strip() == "get started":
@@ -77,7 +82,6 @@ def webhook():
 
     return 'OK', 200
 
-
 def send_message(recipient_id, message_text):
     payload = {
         'messaging_type': 'RESPONSE',
@@ -96,26 +100,23 @@ def send_typing_indicator(recipient_id):
         'sender_action': 'typing_on'
     }
     requests.post(f'https://graph.facebook.com/v12.0/me/messages?access_token={PAGE_ACCESS_TOKEN}', json=payload)
-    time.sleep(1)  # Simulate typing delay
+    time.sleep(1)
 
 def get_huggingface_response(context, question=True, image_url=None):
     if question:
         user_messages = context['messages'][-10:]  # Get the last N messages
         messages = [{"role": "user", "content": msg} for msg in user_messages]
         
-        try:
-            response = client.chat_completion(
-                model="meta-llama/Llama-3.2-3B-Instruct",
-                messages=messages,
-                max_tokens=500,
-                stream=False
-            )
-            text = response.choices[0].message['content'] if response.choices else ""
-            return text or "I'm sorry, I couldn't generate a response."
-        except Exception as e:
-            print(f"Error in question response: {e}")
-            return "Sorry, I couldn't process your question right now."
-
+        response = client.chat_completion(
+            model="meta-llama/Llama-3.2-3B-Instruct",
+            messages=messages,
+            max_tokens=500,
+            stream=False
+        )
+        
+        text = response.choices[0].message['content'] if response.choices else ""
+        return text or "I'm sorry, I couldn't generate a response."
+    
     if image_url:
         messages = [
             {"role": "user", "content": [
@@ -124,20 +125,17 @@ def get_huggingface_response(context, question=True, image_url=None):
             ]}
         ]
         
-        try:
-            response = client.chat_completion(
-                model="meta-llama/Llama-3.2-11B-Vision-Instruct",
-                messages=messages,
-                max_tokens=500,
-                stream=True,
-            )
-            text = ""
-            for message in response:
-                text += message.choices[0].delta.content
-            return text or "I'm sorry, I couldn't describe the image."
-        except Exception as e:
-            print(f"Error in image description: {e}")
-            return "Sorry, I couldn't describe the image right now."
+        response = client.chat_completion(
+            model="meta-llama/Llama-3.2-11B-Vision-Instruct",
+            messages=messages,
+            max_tokens=500,
+            stream=True,
+        )
+        
+        text = ""
+        for message in response:
+            text += message.choices[0].delta.content
+        return text or "I'm sorry, I couldn't describe the image."
     
     return "Invalid request."
 
