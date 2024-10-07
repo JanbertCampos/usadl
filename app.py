@@ -51,18 +51,25 @@ def handle_message(sender_id, message_text):
     context = user_contexts.get(sender_id, {'messages': []})
     context['messages'].append(message_text)
     send_typing_indicator(sender_id)
+    
     response_text = get_huggingface_response(context)
     send_message(sender_id, response_text)
+
     user_contexts[sender_id] = context
 
 def handle_image_message(sender_id, attachments):
-    # Assuming the first attachment is the image we want to process
     image_url = attachments[0]['payload']['url']
     print(f"Received image from {sender_id}: {image_url}")
 
     send_typing_indicator(sender_id)
 
     response_text = analyze_image(image_url)
+
+    # Update the user context with the image analysis result
+    context = user_contexts.get(sender_id, {'messages': []})
+    context['messages'].append(response_text)  # Add the image description to context
+    user_contexts[sender_id] = context  # Store updated context
+
     send_message(sender_id, response_text)
 
 def analyze_image(image_url):
