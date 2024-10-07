@@ -35,43 +35,44 @@ def webhook():
         for event in data['entry'][0]['messaging']:
             sender_id = event['sender']['id']
             message_text = event.get('message', {}).get('text')
+            message_attachments = event.get('message', {}).get('attachments', [])
 
-            if message_text:
-                print(f"Received message from {sender_id}: {message_text}")
+            context = user_contexts.get(sender_id, {'messages': [], 'mode': None})
 
-                context = user_contexts.get(sender_id, {'messages': [], 'mode': None})
-                
-                # Handle "get started" command
-                if message_text.lower() == "get started":
-                    send_message(sender_id, "Please choose an option:\n1. Ask a question\n2. Describe an image")
-                    context['mode'] = "choose_option"
-                elif context.get('mode') == "choose_option":
-                    if message_text.strip() == "1":
-                        context['mode'] = "ask_question"
-                        send_message(sender_id, "You can now ask your question.")
-                    elif message_text.strip() == "2":
-                        context['mode'] = "describe_image"
-                        send_message(sender_id, "Please provide the image URL.")
-                    else:
-                        send_message(sender_id, "Invalid option. Please type 'get started' to see options again.")
-                elif context['mode'] == "ask_question":
-                    context['messages'].append(message_text)
-                    send_typing_indicator(sender_id)
-                    response_text = get_huggingface_response(context, question=True)
-                    send_message(sender_id, response_text)
-                elif context['mode'] == "describe_image":
-                    # Assume the user sends an image URL
-                    if is_valid_image_url(message_text):
-                        context['messages'].append(message_text)
-                        send_typing_indicator(sender_id)
-                        response_text = get_huggingface_response(context, question=False, image_url=message_text)
-                        send_message(sender_id, response_text)
-                    else:
-                        send_message(sender_id, "Please provide a valid image URL.")
+            # Handle "get started" command
+            if message_text and message_text.lower() == "get started":
+                send_message(sender_id, "Please choose an option:\n1. Ask a question\n2. Describe an image")
+                context['mode'] = "choose_option"
+            elif context.get('mode') == "choose_option":
+                if message_text and message_text.strip() == "1":
+                    context['mode'] = "ask_question"
+                    send_message(sender_id, "You can now ask your question.")
+                elif message_text and message_text.strip() == "2":
+                    context['mode'] = "describe_image"
+                    send_message(sender_id, "Please send an image.")
                 else:
-                    send_message(sender_id, "Please type 'get started' to see options.")
+                    send_message(sender_id, "Invalid option. Please type 'get started' to see options again.")
+            elif context['mode'] == "ask_question" and message_text:
+                context['messages'].append(message_text)
+                send_typing_indicator(sender_id)
+                response_text = get_huggingface_response(context, question=True)
+                send_message(sender_id, response_text)
+            elif context['mode'] == "describe_image":
+                if message_attachments:
+                    for attachment in message_attachments:
+                        if attachment['type'] == 'image':
+                            image_url = attachment['payload']['url']
+                            context['messages'].append(image_url)  # Store the image URL
+                            send_typing_indicator(sender_id)
+                            response_text = get_huggingface_response(context, question=False, image_url=image_url)
+                            send_message(sender_id, response_text)
+                            break  # Exit after processing the first image
+                else:
+                    send_message(sender_id, "Please send an image.")
+            else:
+                send_message(sender_id, "Please type 'get started' to see options.")
 
-                user_contexts[sender_id] = context
+            user_contexts[sender_id] = context
 
     return 'OK', 200
 
@@ -131,10 +132,6 @@ def get_huggingface_response(context, question=True, image_url=None):
         return text or "I'm sorry, I couldn't describe the image."
     
     return "Invalid request."
-
-def is_valid_image_url(url):
-    # Implement your logic to validate the URL, e.g., check if it ends with an image format
-    return url.lower().endswith(('.png', '.jpg', '.jpeg', '.gif'))
 
 if __name__ == '__main__':
     app.run(port=5000, debug=True)
