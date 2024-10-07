@@ -54,6 +54,7 @@ def handle_postback(sender_id, payload):
         send_message(sender_id, "You can now ask your question.")
     elif payload == "DESCRIBE_IMAGE":
         context['mode'] = 'describe'
+        context['image_url'] = None  # Reset image URL in case it was previously set
         send_message(sender_id, "Please upload an image to describe.")
 
     user_contexts[sender_id] = context  # Update user context
@@ -82,16 +83,21 @@ def handle_text_message(sender_id, message_text):
 
     # Check for "Get Started" input
     if message_text.lower() == "get started":
-        send_options(sender_id)  # Show options
+        send_options(sender_id)
         return  # Exit the function after sending options
 
     # Handle regular messages based on current mode
     if context['mode'] == 'question':
         response_text = get_huggingface_response(context, message_text)
         send_message(sender_id, response_text)
-    elif context['mode'] == 'describe' and context['image_url']:
-        response_text = get_huggingface_response(context)
-        send_message(sender_id, response_text)
+    elif context['mode'] == 'describe':
+        # Check if the user is supposed to upload an image
+        if message_text and context['image_url'] is None:
+            send_message(sender_id, "Please upload an image to describe.")
+        elif context['image_url']:
+            # If an image URL is already present, process it
+            response_text = get_huggingface_response(context)
+            send_message(sender_id, response_text)
     else:
         send_message(sender_id, "Please select 'Ask a question' or 'Describe an image'.")
 
