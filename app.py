@@ -39,6 +39,7 @@ def webhook():
                 if 'message' in messaging_event:
                     if 'text' in messaging_event['message']:
                         message_text = messaging_event['message']['text']  # Text sent by the user
+                        print(f"Received message from {sender_id}: {message_text}")  # Debug log
 
                         # Process the user's message with your AI model
                         response_text = handle_user_message(sender_id, message_text)
@@ -46,7 +47,7 @@ def webhook():
                         # Send the response back to the user
                         send_message(sender_id, response_text)
                     else:
-                        print(f"Received unsupported message type: {messaging_event['message']}")
+                        print(f"Received unsupported message type from user {sender_id}: {messaging_event['message']}")
                 else:
                     print(f"Received unsupported message type from user {sender_id}")
 
@@ -100,6 +101,8 @@ def send_message(recipient_id, message_text):
         'recipient': {'id': recipient_id},
         'message': {'text': message_text}
     }
+
+    print(f"Sending message to {recipient_id}: {message_text}")  # Debug log
 
     response = requests.post(url, json=payload, headers=headers)
     if response.status_code != 200:
