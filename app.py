@@ -1,107 +1,105 @@
-from flask import Flask, request
-import requests
 import os
-from huggingface_hub import InferenceClient
-import time
+import requests
+from flask import Flask, request, jsonify
+from gradio_client import Client
 
-app = Flask(__name__)
-
-# Replace with your actual tokens
+# Load environment variables
 PAGE_ACCESS_TOKEN = os.environ.get('PAGE_ACCESS_TOKEN')
 HUGGINGFACES_API_KEY = os.environ.get('HUGGINGFACES_API_KEY')
 VERIFY_TOKEN = os.environ.get('VERIFY_TOKEN', '12345')
 
-# Instructions for the AI
-AI_INSTRUCTIONS = (
-    "You are JanbertGwapo, a helpful a super intelligent in entire universe and also be polite and kind. "
-)
+app = Flask(__name__)
+client = Client("yuntian-deng/ChatGPT4")
 
-# Dictionary to store user conversations and topics
-user_contexts = {}
+# Store recent messages and responses for context
+user_messages = {}
+model_responses = {}
 
-# Initialize the Hugging Face API client
-client = InferenceClient(api_key=HUGGINGFACES_API_KEY)
+@app.route('/', methods=['GET'])
+def index():
+    return "Webhook is running", 200
 
-@app.route('/webhook', methods=['GET'])
-def verify():
-    if request.args.get('hub.mode') == 'subscribe' and request.args.get('hub.verify_token') == VERIFY_TOKEN:
-        return request.args.get('hub.challenge')
-    return 'Invalid verification token', 403
-
-@app.route('/webhook', methods=['POST'])
+@app.route('/webhook', methods=['GET', 'POST'])
 def webhook():
-    data = request.get_json()
-    print(f"Incoming data: {data}")
+    if request.method == 'GET':
+        token = request.args.get('hub.verify_token')
+        if token == VERIFY_TOKEN:
+            return request.args.get('hub.challenge')
+        return "Verification token mismatch", 403
 
-    if 'messaging' in data['entry'][0]:
-        for event in data['entry'][0]['messaging']:
-            sender_id = event['sender']['id']
-            message_text = event.get('message', {}).get('text')
+    data = request.json
+    if 'object' in data and data['object'] == 'page':
+        for entry in data['entry']:
+            for messaging_event in entry['messaging']:
+                sender_id = messaging_event['sender']['id']
+                
+                if 'message' in messaging_event and 'text' in messaging_event['message']:
+                    message_text = messaging_event['message']['text']
+                    print(f"Received message from {sender_id}: {message_text}")
 
-            if message_text:
-                print(f"Received message from {sender_id}: {message_text}")
+                    response_text = handle_user_message(sender_id, message_text)
+                    send_message(sender_id, response_text)
+                else:
+                    print(f"Received unsupported message type from user {sender_id}")
 
-                # Retrieve or initialize the conversation context
-                context = user_contexts.get(sender_id, {'messages': []})
-                context['messages'].append(message_text)  # Add the new message to the context
+    return jsonify(status="success"), 200
 
-                # Send typing indicator
-                send_typing_indicator(sender_id)
+def handle_user_message(sender_id, message_text):
+    global user_messages, model_responses
 
-                # Get response from Hugging Face model
-                response_text = get_huggingface_response(context)
-                print(f"Full response: {response_text}")
+    if sender_id not in user_messages:
+        user_messages[sender_id] = []
+        model_responses[sender_id] = []
 
-                # Send the response back to the user
-                send_message(sender_id, response_text)
+    user_messages[sender_id].append(message_text)
 
-                # Store updated context
-                user_contexts[sender_id] = context
-
-    return 'OK', 200
-
-def send_message(recipient_id, message_text):
-    payload = {
-        'messaging_type': 'RESPONSE',
-        'recipient': {'id': recipient_id},
-        'message': {'text': message_text}
-    }
-    response = requests.post(f'https://graph.facebook.com/v12.0/me/messages?access_token={PAGE_ACCESS_TOKEN}', json=payload)
-    if response.status_code != 200:
-        print(f"Failed to send message: {response.text}")
-    else:
-        print(f"Message sent successfully to {recipient_id}: {message_text}")
-
-def send_typing_indicator(recipient_id):
-    payload = {
-        'recipient': {'id': recipient_id},
-        'sender_action': 'typing_on'
-    }
-    requests.post(f'https://graph.facebook.com/v12.0/me/messages?access_token={PAGE_ACCESS_TOKEN}', json=payload)
-    time.sleep(1)  # Simulate typing delay (optional)
-
-def get_huggingface_response(context):
-    # Get the last N messagses for context
-    user_messages = context['messages'][-10:]  # Adjust the number as needed
-    messages = [{"role": "user", "content": msg} for msg in user_messages]
+    # Use the last 5 messages to create the model input
+    model_input = "\n".join(user_messages[sender_id][-5:])  
+    print(f"Chat history: {model_input}")
 
     try:
-        response = client.chat_completion(
-            model="meta-llama/Meta-Llama-3-8B-Instruct",
-            messages=messages,
-            max_tokens=500,
-            stream=False
+        # Call the predict API with appropriate parameters
+        result = client.predict(
+            inputs=model_input,
+            top_p=0.9,
+            temperature=0.7,
+            chat_counter=len(user_messages[sender_id]),
+            chatbot=user_messages[sender_id][-5:],  # Use last 5 messages
+            api_name="/predict"
         )
-
-        text = response.choices[0].message['content'] if response.choices else ""
-
-        if not text:
-            return "I'm sorry, I couldn't generate a response. Can you please ask something else?"
-
-        return text
-    except Exception as e:
-        print(f"Error getting response from Hugging Face: {e}")
-        return "Sorry, I'm having trouble responding right now."
         
+        # Extract the first element of the result, which contains the model response
+        response_text = result[0][0] if isinstance(result, tuple) else "I didn't understand that."
+    except Exception as e:
+        print(f"Error calling the AI model: {e}")
+        response_text = "I'm having trouble responding right now."
+
+    response_text = response_text.replace("'", "").replace("[", "").replace("]", "").strip()
+
+    # Add a fallback mechanism for repeated misunderstandings
+    if model_responses[sender_id] and response_text == model_responses[sender_id][-1]:
+        response_text = "I'm sorry, can you ask me something else?"
+
+    model_responses[sender_id].append(response_text)
+
+    print(f"Response from model: {response_text}")
+    return response_text
+
+def send_message(recipient_id, message_text):
+    if not message_text:
+        message_text = "I didn't understand that."
+
+    message_text = str(message_text).encode('utf-8', 'ignore').decode('utf-8')
+
+    url = f'https://graph.facebook.com/v11.0/me/messages?access_token={PAGE_ACCESS_TOKEN}'
+    headers = {'Content-Type': 'application/json'}
+    payload = {'recipient': {'id': recipient_id}, 'message': {'text': message_text}}
+
+    print(f"Sending message to {recipient_id}: {message_text}")
+
+    response = requests.post(url, json=payload, headers=headers)
+    if response.status_code != 200:
+        print(f"Error sending message: {response.status_code} - {response.text}")
+
 if __name__ == '__main__':
-    app.run(port=5000, debug=True)
+    app.run(host='0.0.0.0', port=5000)
