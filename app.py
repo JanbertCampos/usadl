@@ -35,29 +35,28 @@ def webhook():
         for event in data['entry'][0]['messaging']:
             sender_id = event['sender']['id']
             message_text = event.get('message', {}).get('text')
-            message_attachments = event.get('message', {}).get('attachments', [])
 
             context = user_contexts.get(sender_id, {'messages': [], 'mode': None})
 
             # Handle "get started" command
-            if message_text and message_text.lower() == "get started":
+            if message_text and message_text.lower().strip() == "get started":
                 send_message(sender_id, "Please choose an option:\n1. Ask a question\n2. Describe an image")
                 context['mode'] = "choose_option"
             elif context.get('mode') == "choose_option":
-                if message_text and message_text.strip() == "1":
+                if message_text.strip() == "1":
                     context['mode'] = "ask_question"
                     send_message(sender_id, "You can now ask your question.")
-                elif message_text and message_text.strip() == "2":
+                elif message_text.strip() == "2":
                     context['mode'] = "describe_image"
                     send_message(sender_id, "Please send an image.")
                 else:
                     send_message(sender_id, "Invalid option. Please type 'get started' to see options again.")
-            elif context['mode'] == "ask_question" and message_text:
+            elif context.get('mode') == "ask_question" and message_text:
                 context['messages'].append(message_text)
                 send_typing_indicator(sender_id)
                 response_text = get_huggingface_response(context, question=True)
                 send_message(sender_id, response_text)
-            elif context['mode'] == "describe_image":
+            elif context.get('mode') == "describe_image":
                 if message_attachments:
                     for attachment in message_attachments:
                         if attachment['type'] == 'image':
