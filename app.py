@@ -11,8 +11,9 @@ VERIFY_TOKEN = os.environ.get('VERIFY_TOKEN', '12345')
 app = Flask(__name__)
 client = Client("yuntian-deng/ChatGPT4")
 
-# Dictionary to store user conversations
-user_contexts = {}
+# Store recent messages and responses for context
+user_messages = {}
+model_responses = {}
 
 @app.route('/', methods=['GET'])
 def index():
@@ -35,44 +36,47 @@ def webhook():
                 sender_id = messaging_event['sender']['id']  # ID of the user who sent the message
 
                 # Check if the messaging event contains a message
-                if 'message' in messaging_event and 'text' in messaging_event['message']:
-                    message_text = messaging_event['message']['text']  # Text sent by the user
-                    
-                    # Process the user's message with your AI model
-                    response_text = handle_user_message(sender_id, message_text)
-                    
-                    # Send the response back to the user
-                    send_message(sender_id, response_text)
+                if 'message' in messaging_event:
+                    if 'text' in messaging_event['message']:
+                        message_text = messaging_event['message']['text']  # Text sent by the user
+
+                        # Process the user's message with your AI model
+                        response_text = handle_user_message(sender_id, message_text)
+
+                        # Send the response back to the user
+                        send_message(sender_id, response_text)
+                    else:
+                        print(f"Received unsupported message type: {messaging_event['message']}")
                 else:
                     print(f"Received unsupported message type from user {sender_id}")
 
     return jsonify(status="success"), 200
 
 def handle_user_message(sender_id, message_text):
-    # Initialize user context if not present
-    if sender_id not in user_contexts:
-        user_contexts[sender_id] = {
-            'messages': [],
-            'responses': []
-        }
+    global user_messages, model_responses
 
-    user_context = user_contexts[sender_id]
-    user_context['messages'].append(message_text)
-    
+    # Initialize user context if not present
+    if sender_id not in user_messages:
+        user_messages[sender_id] = []
+        model_responses[sender_id] = []
+
+    # Append the current user message to the history
+    user_messages[sender_id].append(message_text)
+
     # Construct the model input from the user messages
-    model_input = "\n".join(user_context['messages'][-5:])  # Limit to the last 5 messages
+    model_input = "\n".join(user_messages[sender_id][-5:])  # Limit to the last 5 messages
     print(f"Chat history: {model_input}")  # Debug log
 
     # Get a response from the model
     result = client.predict(inputs=model_input, top_p=0.9, temperature=0.7, api_name="/predict")
     response_text = result[0][0] if result else "I didn't understand that."
-    
+
     # Check if the response is repetitive
-    if user_context['responses'] and response_text == user_context['responses'][-1]:
+    if model_responses[sender_id] and response_text == model_responses[sender_id][-1]:
         response_text = "I'm sorry, can you ask me something else?"
 
     # Append the response to the history
-    user_context['responses'].append(response_text)
+    model_responses[sender_id].append(response_text)
 
     print(f"Response from model: {response_text}")  # Debug log
     return response_text
@@ -93,7 +97,7 @@ def send_message(recipient_id, message_text):
         'recipient': {'id': recipient_id},
         'message': {'text': message_text}
     }
-    
+
     response = requests.post(url, json=payload, headers=headers)
     if response.status_code != 200:
         print(f"Error sending message: {response.status_code} - {response.text}")
