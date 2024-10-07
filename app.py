@@ -48,11 +48,30 @@ def webhook():
     return 'OK', 200
 
 def send_options(recipient_id):
-    options_message = (
-        "Welcome! Please choose an option:\n"
-        "1. Type 'Ask a question' to ask a question.\n"
-        "2. Type 'Describe an image' to analyze an image."
-    )
+    buttons = [
+        {
+            "type": "postback",
+            "title": "Ask a question",
+            "payload": "ASK_QUESTION"
+        },
+        {
+            "type": "postback",
+            "title": "Describe an image",
+            "payload": "DESCRIBE_IMAGE"
+        }
+    ]
+
+    options_message = {
+        "attachment": {
+            "type": "template",
+            "payload": {
+                "template_type": "button",
+                "text": "Welcome! Please choose an option:",
+                "buttons": buttons
+            }
+        }
+    }
+
     send_message(recipient_id, options_message)
 
 def handle_text_message(sender_id, message_text):
@@ -131,7 +150,7 @@ def send_message(recipient_id, message_text):
     payload = {
         'messaging_type': 'RESPONSE',
         'recipient': {'id': recipient_id},
-        'message': {'text': message_text}
+        'message': message_text if isinstance(message_text, dict) else {'text': message_text}
     }
     response = requests.post(f'https://graph.facebook.com/v12.0/me/messages?access_token={PAGE_ACCESS_TOKEN}', json=payload)
     if response.status_code != 200:
