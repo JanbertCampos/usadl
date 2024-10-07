@@ -34,8 +34,8 @@ def webhook():
             message_text = event.get('message', {}).get('text')
             message_attachments = event.get('message', {}).get('attachments')
 
-            # Check if the user clicked "Get Started"
-            if 'postback' in event and event['postback']['payload'] == 'GET_STARTED':
+            # Check if the user typed "Get Started"
+            if message_text and message_text.lower() == "get started":
                 send_options(sender_id)
                 continue
 
@@ -77,7 +77,7 @@ def send_options(recipient_id):
 def handle_text_message(sender_id, message_text):
     context = user_contexts.get(sender_id, {'messages': [], 'mode': 'question', 'image_url': None})
 
-    # Check if the user is choosing a mode
+    # Check if the user is choosing a mode based on the buttons
     if message_text.lower() == "ask a question":
         context['mode'] = 'question'
         send_message(sender_id, "You can now ask your question.")
