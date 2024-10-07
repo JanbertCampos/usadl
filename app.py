@@ -6,19 +6,16 @@ import time
 
 app = Flask(__name__)
 
-# Replace with your actual tokens
+
 PAGE_ACCESS_TOKEN = os.environ.get('PAGE_ACCESS_TOKEN')
 HUGGINGFACES_API_KEY = os.environ.get('HUGGINGFACES_API_KEY')
 VERIFY_TOKEN = os.environ.get('VERIFY_TOKEN', '12345')
 
-# Instructions for the AI
-AI_INSTRUCTIONS = "You are JanbertGwapo, a helpful super intelligent being in the universe and also be polite and kind."
 
-# Dictionary to store user conversations and topics
-user_contexts = {}
-
-# Initialize the Hugging Face API client
 client = InferenceClient(api_key=HUGGINGFACES_API_KEY)
+
+# Dictionary to store user contexts
+user_contexts = {}
 
 @app.route('/webhook', methods=['GET'])
 def verify():
@@ -37,50 +34,53 @@ def webhook():
             message_text = event.get('message', {}).get('text', None)
             message_attachments = event.get('message', {}).get('attachments', [])
 
-            # Initialize or retrieve the user context
+            # Initialize or retrieve user context
             context = user_contexts.get(sender_id, {'messages': [], 'mode': None})
 
-            print(f"Current context for {sender_id}: {context}")  # Debugging line
-            print(f"Received message text: {message_text}")  # Debugging line
-            print(f"Received message attachments: {message_attachments}")  # Debugging line
-
-            # Handle "get started" command
             if message_text and message_text.lower().strip() == "get started":
                 send_message(sender_id, "Please choose an option:\n1. Ask a question\n2. Describe an image")
                 context['mode'] = "choose_option"
             elif context.get('mode') == "choose_option":
-                if message_text.strip() == "1":
-                    context['mode'] = "ask_question"
-                    send_message(sender_id, "You can now ask your question.")
-                elif message_text.strip() == "2":
-                    context['mode'] = "describe_image"
-                    send_message(sender_id, "Please send an image.")
-                else:
-                    send_message(sender_id, "Invalid option. Please type 'get started' to see options again.")
+                handle_option_choice(sender_id, message_text, context)
             elif context.get('mode') == "ask_question" and message_text:
-                context['messages'].append(message_text)
-                send_typing_indicator(sender_id)
-                response_text = get_huggingface_response(context, question=True)
-                send_message(sender_id, response_text)
+                handle_question(sender_id, message_text, context)
             elif context.get('mode') == "describe_image":
-                if message_attachments:
-                    for attachment in message_attachments:
-                        if attachment['type'] == 'image':
-                            image_url = attachment['payload']['url']
-                            context['messages'].append(image_url)  # Store the image URL
-                            send_typing_indicator(sender_id)
-                            response_text = get_huggingface_response(context, question=False, image_url=image_url)
-                            send_message(sender_id, response_text)
-                            break  # Exit after processing the first image
-                else:
-                    send_message(sender_id, "Please send an image.")
+                handle_image_description(sender_id, message_attachments, context)
             else:
                 send_message(sender_id, "Please type 'get started' to see options.")
 
-            # Update the user context
-            user_contexts[sender_id] = context
+            user_contexts[sender_id] = context  # Update user context
 
     return 'OK', 200
+
+def handle_option_choice(sender_id, message_text, context):
+    if message_text.strip() == "1":
+        context['mode'] = "ask_question"
+        send_message(sender_id, "You can now ask your question.")
+    elif message_text.strip() == "2":
+        context['mode'] = "describe_image"
+        send_message(sender_id, "Please send an image.")
+    else:
+        send_message(sender_id, "Invalid option. Please type 'get started' to see options again.")
+
+def handle_question(sender_id, message_text, context):
+    context['messages'].append(message_text)
+    send_typing_indicator(sender_id)
+    response_text = get_huggingface_response(context, question=True)
+    send_message(sender_id, response_text)
+
+def handle_image_description(sender_id, message_attachments, context):
+    if message_attachments:
+        for attachment in message_attachments:
+            if attachment['type'] == 'image':
+                image_url = attachment['payload']['url']
+                context['messages'].append(image_url)  # Store the image URL
+                send_typing_indicator(sender_id)
+                response_text = get_huggingface_response(context, question=False, image_url=image_url)
+                send_message(sender_id, response_text)
+                break  # Exit after processing the first image
+    else:
+        send_message(sender_id, "Please send an image.")
 
 def send_message(recipient_id, message_text):
     payload = {
