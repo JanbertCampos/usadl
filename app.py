@@ -11,7 +11,7 @@ PAGE_ACCESS_TOKEN = os.environ.get('PAGE_ACCESS_TOKEN')
 HUGGINGFACES_API_KEY = os.environ.get('HUGGINGFACES_API_KEY')
 VERIFY_TOKEN = os.environ.get('VERIFY_TOKEN', '12345')
 
-# Dictionary to store user conversations and topics
+# Dictionary to store user conversations and contexts
 user_contexts = {}
 
 # Initialize the Hugging Face API client
@@ -19,12 +19,14 @@ client = InferenceClient(api_key=HUGGINGFACES_API_KEY)
 
 @app.route('/webhook', methods=['GET'])
 def verify():
+    """Verification for the webhook."""
     if request.args.get('hub.mode') == 'subscribe' and request.args.get('hub.verify_token') == VERIFY_TOKEN:
         return request.args.get('hub.challenge')
     return 'Invalid verification token', 403
 
 @app.route('/webhook', methods=['POST'])
 def webhook():
+    """Handle incoming messages from the Facebook Messenger."""
     data = request.get_json()
     print(f"Incoming data: {data}")
 
@@ -35,36 +37,35 @@ def webhook():
             attachments = event.get('message', {}).get('attachments', [])
             postback_payload = event.get('postback', {}).get('payload')
 
-            # Handle button click payloads
             if postback_payload:
                 handle_postback(sender_id, postback_payload)
-                continue
-
-            # Handle regular text messages
-            if message_text:
+            elif message_text:
                 print(f"Received message from {sender_id}: {message_text}")
                 handle_text_message(sender_id, message_text)
-            
-            # Handle image messages
-            if attachments:
+            elif attachments:
                 handle_image_message(sender_id, attachments)
 
     return 'OK', 200
 
 def handle_postback(sender_id, payload):
-    context = user_contexts.get(sender_id, {'messages': [], 'mode': 'question', 'image_url': None})
-
+    """Handle postback payloads for button interactions."""
+    context = user_contexts.get(sender_id, initialize_context())
     if payload == "ASK_QUESTION":
         context['mode'] = 'question'
         send_message(sender_id, "You can now ask your question.")
     elif payload == "DESCRIBE_IMAGE":
         context['mode'] = 'describe'
-        context['image_url'] = None  # Reset image URL in case it was previously set
+        context['image_url'] = None  # Reset image URL
         send_message(sender_id, "Please upload an image to describe.")
-
+    
     user_contexts[sender_id] = context  # Update user context
 
+def initialize_context():
+    """Initialize user context."""
+    return {'messages': [], 'mode': 'question', 'image_url': None, 'image_description': None}
+
 def send_options(recipient_id):
+    """Send the main options to the user."""
     buttons = [
         {"type": "postback", "title": "Ask a question", "payload": "ASK_QUESTION"},
         {"type": "postback", "title": "Describe an image", "payload": "DESCRIBE_IMAGE"}
@@ -84,14 +85,13 @@ def send_options(recipient_id):
     send_message(recipient_id, options_message)
 
 def handle_text_message(sender_id, message_text):
-    context = user_contexts.get(sender_id, {'messages': [], 'mode': 'question', 'image_url': None})
+    """Process text messages based on the user's current mode."""
+    context = user_contexts.get(sender_id, initialize_context())
 
-    # Check for "Get Started" input
     if message_text.lower() == "get started":
         send_options(sender_id)
         return
 
-    # Handle regular messages based on current mode
     if context['mode'] == 'question':
         response_text = get_huggingface_response(context, message_text)
         send_message(sender_id, response_text)
@@ -105,6 +105,7 @@ def handle_text_message(sender_id, message_text):
     user_contexts[sender_id] = context
 
 def handle_image_message(sender_id, attachments):
+    """Process image messages uploaded by the user."""
     if attachments and attachments[0]['type'] == 'image':
         image_url = attachments[0]['payload']['url']
         print(f"Received image from {sender_id}: {image_url}")
@@ -113,10 +114,11 @@ def handle_image_message(sender_id, attachments):
 
         response_text = analyze_image(image_url)
 
-        context = user_contexts.get(sender_id, {'messages': [], 'mode': 'describe', 'image_url': None})
+        context = user_contexts.get(sender_id, initialize_context())
         context['messages'].append(response_text)
-        context['image_url'] = image_url  # Store the image URL for further analysis if needed
-        context['mode'] = 'describe'  # Ensure the mode is set correctly
+        context['image_url'] = image_url
+        context['image_description'] = response_text  # Store the description for follow-ups
+        context['mode'] = 'describe'
 
         user_contexts[sender_id] = context
         send_message(sender_id, response_text)
@@ -124,6 +126,7 @@ def handle_image_message(sender_id, attachments):
         send_message(sender_id, "I can only describe images. Please upload an image.")
 
 def analyze_image(image_url):
+    """Analyze the uploaded image using Hugging Face API."""
     try:
         messages = [
             {
@@ -154,6 +157,7 @@ def analyze_image(image_url):
         return "Sorry, I'm having trouble analyzing the image right now."
 
 def send_message(recipient_id, message_text):
+    """Send a message to the user via the Facebook Messenger API."""
     payload = {
         'messaging_type': 'RESPONSE',
         'recipient': {'id': recipient_id},
@@ -166,6 +170,7 @@ def send_message(recipient_id, message_text):
         print(f"Message sent successfully to {recipient_id}: {message_text}")
 
 def send_typing_indicator(recipient_id):
+    """Send a typing indicator to the user."""
     payload = {
         'recipient': {'id': recipient_id},
         'sender_action': 'typing_on'
@@ -174,12 +179,13 @@ def send_typing_indicator(recipient_id):
     time.sleep(1)
 
 def get_huggingface_response(context, user_question=None):
+    """Get a response from the Hugging Face API based on the user’s context."""
     user_messages = context['messages'][-10:]  # Get the last 10 messages
     if user_question:
-        user_messages.append(user_question)  # Append the current question
+        user_messages.append(user_question)
     messages = [{"role": "user", "content": msg} for msg in user_messages]
 
-    print(f"Sending messages to Hugging Face: {messages}")  # Debug statement
+    print(f"Sending messages to Hugging Face: {messages}")
 
     try:
         response = client.chat_completion(
@@ -190,7 +196,7 @@ def get_huggingface_response(context, user_question=None):
         )
 
         text = response.choices[0].message['content'] if response.choices else ""
-        print(f"Response from Hugging Face: {text}")  # Debug statement
+        print(f"Response from Hugging Face: {text}")
 
         if not text:
             return "I'm sorry, I couldn't generate a response. Can you please ask something else?"
