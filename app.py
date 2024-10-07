@@ -6,15 +6,12 @@ import time
 
 app = Flask(__name__)
 
-# Replace with your actual tokens
 PAGE_ACCESS_TOKEN = os.environ.get('PAGE_ACCESS_TOKEN')
 HUGGINGFACES_API_KEY = os.environ.get('HUGGINGFACES_API_KEY')
 VERIFY_TOKEN = os.environ.get('VERIFY_TOKEN', '12345')
 
-# Dictionary to store user conversations and topics
 user_contexts = {}
 
-# Initialize the Hugging Face API client
 client = InferenceClient(api_key=HUGGINGFACES_API_KEY)
 
 @app.route('/webhook', methods=['GET'])
@@ -32,33 +29,37 @@ def webhook():
         for event in data['entry'][0]['messaging']:
             sender_id = event['sender']['id']
             message_text = event.get('message', {}).get('text')
-            message_attachments = event.get('message', {}).get('attachments')
+            postback_payload = event.get('postback', {}).get('payload')
 
-            # Check if the user typed "Get Started"
-            if message_text and message_text.lower() == "get started":
-                send_options(sender_id)
+            # Handle button click payloads
+            if postback_payload:
+                handle_postback(sender_id, postback_payload)
                 continue
 
+            # Handle regular text messages
             if message_text:
                 print(f"Received message from {sender_id}: {message_text}")
                 handle_text_message(sender_id, message_text)
-            elif message_attachments:
-                handle_image_message(sender_id, message_attachments)
 
     return 'OK', 200
 
+def handle_postback(sender_id, payload):
+    context = user_contexts.get(sender_id, {'messages': [], 'mode': 'question', 'image_url': None})
+
+    if payload == "ASK_QUESTION":
+        context['mode'] = 'question'
+        send_message(sender_id, "You can now ask your question.")
+    elif payload == "DESCRIBE_IMAGE":
+        context['mode'] = 'describe'
+        send_message(sender_id, "Please upload an image to describe.")
+
+    user_contexts[sender_id] = context  # Update user context
+
+
 def send_options(recipient_id):
     buttons = [
-        {
-            "type": "postback",
-            "title": "ask a question",
-            "payload": "ASK_QUESTION"
-        },
-        {
-            "type": "postback",
-            "title": "describe an image",
-            "payload": "DESCRIBE_IMAGE"
-        }
+        {"type": "postback", "title": "Ask a question", "payload": "ASK_QUESTION"},
+        {"type": "postback", "title": "Describe an image", "payload": "DESCRIBE_IMAGE"}
     ]
 
     options_message = {
@@ -77,7 +78,6 @@ def send_options(recipient_id):
 def handle_text_message(sender_id, message_text):
     context = user_contexts.get(sender_id, {'messages': [], 'mode': 'question', 'image_url': None})
 
-    # Check if the user is choosing a mode based on the buttons
     if message_text.lower() == "ask a question":
         context['mode'] = 'question'
         send_message(sender_id, "You can now ask your question.")
@@ -85,7 +85,6 @@ def handle_text_message(sender_id, message_text):
         context['mode'] = 'describe'
         send_message(sender_id, "Please upload an image to describe.")
     else:
-        # Handle regular messages based on current mode
         if context['mode'] == 'question':
             response_text = get_huggingface_response(context, message_text)
             send_message(sender_id, response_text)
@@ -95,7 +94,6 @@ def handle_text_message(sender_id, message_text):
         else:
             send_message(sender_id, "Please select 'Ask a question' or 'Describe an image'.")
 
-    # Update context with the new message
     context['messages'].append(message_text)
     user_contexts[sender_id] = context
 
@@ -107,13 +105,12 @@ def handle_image_message(sender_id, attachments):
 
     response_text = analyze_image(image_url)
 
-    # Update context with the image URL and switch to 'describe' mode
     context = user_contexts.get(sender_id, {'messages': [], 'mode': 'describe', 'image_url': None})
-    context['messages'].append(response_text)  # Add the image description to context
-    context['image_url'] = image_url  # Store the image URL
-    context['mode'] = 'describe'  # Set mode to describe
+    context['messages'].append(response_text)
+    context['image_url'] = image_url
+    context['mode'] = 'describe'
 
-    user_contexts[sender_id] = context  # Store updated context
+    user_contexts[sender_id] = context
     send_message(sender_id, response_text)
 
 def analyze_image(image_url):
@@ -167,12 +164,12 @@ def send_typing_indicator(recipient_id):
     time.sleep(1)
 
 def get_huggingface_response(context, user_question=None):
-    user_messages = context['messages'][-10:]  # Get the last 10 messages
+    user_messages = context['messages'][-10:]
     if user_question:
-        user_messages.append(user_question)  # Append the current question
+        user_messages.append(user_question)
     messages = [{"role": "user", "content": msg} for msg in user_messages]
 
-    print(f"Sending messages to Hugging Face: {messages}")  # Debug statement
+    print(f"Sending messages to Hugging Face: {messages}")
 
     try:
         response = client.chat_completion(
@@ -183,7 +180,7 @@ def get_huggingface_response(context, user_question=None):
         )
 
         text = response.choices[0].message['content'] if response.choices else ""
-        print(f"Response from Hugging Face: {text}")  # Debug statement
+        print(f"Response from Hugging Face: {text}")
 
         if not text:
             return "I'm sorry, I couldn't generate a response. Can you please ask something else?"
@@ -193,21 +190,9 @@ def get_huggingface_response(context, user_question=None):
         print(f"Error getting response from Hugging Face: {e}")
         return "Sorry, I'm having trouble responding right now."
 
-def handle_database_errors(sender_id):
-    error_options = [
-        "Database connection issue",
-        "SQL syntax error",
-        "Data type mismatch error",
-        "Constraint violation error",
-        "Transactions rolled back",
-        "Indexing error",
-        "Query timeout error",
-        "Data integrity error"
-    ]
-
-    options_message = "Here are some possible database errors you might encounter:\n" + "\n".join(f"{i+1}. {error}" for i, error in enumerate(error_options))
-    options_message += "\nPlease type the error name or select a number to learn more about it."
-    send_message(sender_id, options_message)
+def handle_color_request(sender_id):
+    # Provide guidance when asking about colors
+    send_message(sender_id, "Could you please clarify what colors you're referring to? If you're asking about an image, please upload it again for analysis.")
 
 if __name__ == '__main__':
     app.run(port=5000, debug=True)
