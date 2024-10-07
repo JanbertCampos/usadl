@@ -89,14 +89,13 @@ def handle_text_message(sender_id, message_text):
     # Check for "Get Started" input
     if message_text.lower() == "get started":
         send_options(sender_id)
-        return  # Exit the function after sending options
+        return
 
     # Handle regular messages based on current mode
     if context['mode'] == 'question':
         response_text = get_huggingface_response(context, message_text)
         send_message(sender_id, response_text)
     elif context['mode'] == 'describe':
-        # Prompt the user to upload an image, or if they mention an image, it should be handled in the image message handler
         send_message(sender_id, "Please upload an image to describe.")
     else:
         send_message(sender_id, "Please select 'Ask a question' or 'Describe an image'.")
@@ -116,8 +115,8 @@ def handle_image_message(sender_id, attachments):
 
         context = user_contexts.get(sender_id, {'messages': [], 'mode': 'describe', 'image_url': None})
         context['messages'].append(response_text)
-        context['image_url'] = image_url
-        context['mode'] = 'describe'
+        context['image_url'] = image_url  # Store the image URL for further analysis if needed
+        context['mode'] = 'describe'  # Ensure the mode is set correctly
 
         user_contexts[sender_id] = context
         send_message(sender_id, response_text)
