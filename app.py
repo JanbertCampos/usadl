@@ -37,6 +37,8 @@ def webhook():
             # Initialize or retrieve the user context
             context = user_contexts.get(sender_id, {'messages': [], 'mode': None})
 
+            print(f"Current context for {sender_id}: {context}")  # Debugging line
+
             # Handle "get started" command
             if message_text and message_text.lower().strip() == "get started":
                 send_message(sender_id, "Please choose an option:\n1. Ask a question\n2. Describe an image")
@@ -74,6 +76,7 @@ def webhook():
             user_contexts[sender_id] = context
 
     return 'OK', 200
+
 
 def send_message(recipient_id, message_text):
     payload = {
