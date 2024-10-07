@@ -39,6 +39,12 @@ def webhook():
             message_text = event.get('message', {}).get('text')
             message_attachments = event.get('message', {}).get('attachments')
 
+            # Check if the user clicked "Get Started"
+            if 'postback' in event:
+                if event['postback']['payload'] == 'GET_STARTED':
+                    send_options(sender_id)
+                    continue
+
             if message_text:
                 print(f"Received message from {sender_id}: {message_text}")
                 handle_text_message(sender_id, message_text)
@@ -46,6 +52,14 @@ def webhook():
                 handle_image_message(sender_id, message_attachments)
 
     return 'OK', 200
+
+def send_options(recipient_id):
+    options_message = (
+        "Welcome! Please choose an option:\n"
+        "1. Type 'Ask a question' to ask a question.\n"
+        "2. Type 'Describe an image' to analyze an image."
+    )
+    send_message(recipient_id, options_message)
 
 def handle_text_message(sender_id, message_text):
     context = user_contexts.get(sender_id, {'messages': [], 'mode': 'question', 'image_url': None})
