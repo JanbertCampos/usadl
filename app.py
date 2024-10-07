@@ -40,6 +40,12 @@ def webhook():
 
 def handle_user_message(message_text):
     global chat_history
+    
+    # Optional: Reset chat history based on specific keywords
+    if message_text.lower() in ["reset", "start over"]:
+        chat_history = []
+        return "Chat history has been reset. How can I assist you today?"
+    
     chat_history.append(message_text)  # Append the user's message to chat history
     print(f"Chat history: {chat_history}")  # Debug log
 
