@@ -56,11 +56,7 @@ def send_options(recipient_id):
     send_message(recipient_id, options_message)
 
 def handle_text_message(sender_id, message_text):
-    context = user_contexts.get(sender_id, {'messages': [], 'mode': None, 'image_url': None})
-
-    # Initialize context if needed
-    if context['mode'] is None:
-        context['mode'] = 'question'  # Default mode
+    context = user_contexts.get(sender_id, {'messages': [], 'mode': 'question', 'image_url': None})
 
     # Check if the user is choosing a mode
     if message_text.lower() == "ask a question":
@@ -72,7 +68,7 @@ def handle_text_message(sender_id, message_text):
     else:
         # Handle regular messages based on current mode
         if context['mode'] == 'question':
-            response_text = get_huggingface_response(context)
+            response_text = get_huggingface_response(context, message_text)
             send_message(sender_id, response_text)
         elif context['mode'] == 'describe' and context['image_url']:
             response_text = get_huggingface_response(context)
@@ -80,6 +76,8 @@ def handle_text_message(sender_id, message_text):
         else:
             send_message(sender_id, "Please select 'Ask a question' or 'Describe an image'.")
 
+    # Update context with the new message
+    context['messages'].append(message_text)
     user_contexts[sender_id] = context
 
 def handle_image_message(sender_id, attachments):
@@ -149,9 +147,13 @@ def send_typing_indicator(recipient_id):
     requests.post(f'https://graph.facebook.com/v12.0/me/messages?access_token={PAGE_ACCESS_TOKEN}', json=payload)
     time.sleep(1)
 
-def get_huggingface_response(context):
-    user_messages = context['messages'][-10:]
+def get_huggingface_response(context, user_question=None):
+    user_messages = context['messages'][-10:]  # Get the last 10 messages
+    if user_question:
+        user_messages.append(user_question)  # Append the current question
     messages = [{"role": "user", "content": msg} for msg in user_messages]
+
+    print(f"Sending messages to Hugging Face: {messages}")  # Debug statement
 
     try:
         response = client.chat_completion(
@@ -162,6 +164,7 @@ def get_huggingface_response(context):
         )
 
         text = response.choices[0].message['content'] if response.choices else ""
+        print(f"Response from Hugging Face: {text}")  # Debug statement
 
         if not text:
             return "I'm sorry, I couldn't generate a response. Can you please ask something else?"
