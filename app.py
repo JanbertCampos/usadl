@@ -42,13 +42,13 @@ def webhook():
             # Handle user commands based on context
             if message_text:
                 message_text = message_text.lower().strip()
-                handle_user_input(sender_id, message_text, context)
+                handle_user_input(sender_id, message_text, context, message_attachments)
 
             user_contexts[sender_id] = context  # Update user context
 
     return 'OK', 200
 
-def handle_user_input(sender_id, message_text, context):
+def handle_user_input(sender_id, message_text, context, message_attachments):
     if message_text == "get started":
         send_message(sender_id, "Please choose an option:\n1. Ask a question\n2. Describe an image")
         context['mode'] = "choose_option"
