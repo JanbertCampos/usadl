@@ -38,8 +38,9 @@ def webhook():
                         for attachment in event['message']['attachments']:
                             if attachment['type'] == 'image':
                                 image_url = attachment['payload']['url']
+                                print(f"Received image URL: {image_url}")  # Log the image URL
                                 description = get_image_description(image_url)
-                                # Here you would send the description back to the user
+                                # Send the description back to the user
                                 send_message(event['sender']['id'], description)
 
         return 'OK', 200
@@ -56,13 +57,18 @@ def get_image_description(image_url):
             }
         ]
 
-        for message in client.chat_completion(
+        response = client.chat_completion(
             model="meta-llama/Llama-3.2-11B-Vision-Instruct",
             messages=messages,
             max_tokens=500,
             stream=False,
-        ):
-            return message.choices[0].delta.content
+        )
+
+        if response and response.choices:
+            return response.choices[0].delta.content
+        else:
+            print("No choices returned from the model.")
+            return "Could not retrieve description."
 
     except Exception as e:
         print(f"Error retrieving description: {e}")
