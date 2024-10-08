@@ -44,7 +44,7 @@ def handle_message(data):
                 if user_message.lower() == "ask for a question":
                     send_response(sender_id, "Please type your question.")
                 elif user_message.lower() == "describe an image":
-                    send_response(sender_id, "Please provide the image URL.")
+                    send_response(sender_id, "Please sent an image.")
                 elif attachments:
                     # Handle image attachments
                     process_image_attachment(sender_id, attachments)
