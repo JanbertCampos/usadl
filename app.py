@@ -11,7 +11,7 @@ PAGE_ACCESS_TOKEN = os.environ.get('PAGE_ACCESS_TOKEN')
 HUGGINGFACES_API_KEY = os.environ.get('HUGGINGFACES_API_KEY')
 VERIFY_TOKEN = os.environ.get('VERIFY_TOKEN', '12345')
 
-# Initialize the Hugging Face API client
+
 client = InferenceClient(api_key=HUGGINGFACES_API_KEY)
 
 # Dictionary to store user contexts
