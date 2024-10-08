@@ -11,7 +11,7 @@ PAGE_ACCESS_TOKEN = os.environ.get('PAGE_ACCESS_TOKEN')
 HUGGINGFACES_API_KEY = os.environ.get('HUGGINGFACES_API_KEY')
 VERIFY_TOKEN = os.environ.get('VERIFY_TOKEN', '12345')
 
-
+# Initialize the Hugging Face API client
 client = InferenceClient(api_key=HUGGINGFACES_API_KEY)
 
 # Dictionary to store user contexts
@@ -19,12 +19,14 @@ user_contexts = {}
 
 @app.route('/webhook', methods=['GET'])
 def verify():
+    """Verification for the webhook."""
     if request.args.get('hub.mode') == 'subscribe' and request.args.get('hub.verify_token') == VERIFY_TOKEN:
         return request.args.get('hub.challenge')
     return 'Invalid verification token', 403
 
 @app.route('/webhook', methods=['POST'])
 def webhook():
+    """Handle incoming messages from users."""
     data = request.get_json()
     print(f"Incoming data: {data}")  # Debugging line
 
@@ -48,10 +50,12 @@ def webhook():
     return 'OK', 200
 
 def handle_user_input(sender_id, message_text, context, message_attachments):
+    """Process user input based on the current context."""
     if message_text == "get started":
         send_message(sender_id, "Please choose an option:\n1. Ask a question\n2. Describe an image")
         context['mode'] = "choose_option"
         context['messages'].append(message_text)  # Store user command
+
     elif context.get('mode') == "choose_option":
         if message_text == "1":
             context['mode'] = "ask_question"
@@ -61,20 +65,24 @@ def handle_user_input(sender_id, message_text, context, message_attachments):
             send_message(sender_id, "Please send an image.")
         else:
             send_message(sender_id, "Invalid option. Please type 'get started' to see options again.")
+
     elif context.get('mode') == "ask_question":
         context['messages'].append(message_text)
         send_typing_indicator(sender_id)
         response_text = get_huggingface_response(context, question=True)
         send_message(sender_id, response_text)
+
     elif context.get('mode') == "describe_image":
         if message_attachments:
             handle_image_description(sender_id, message_attachments, context)
         else:
             send_message(sender_id, "I need an image to describe. Please send an image.")
+    
     else:
         send_message(sender_id, "Please type 'get started' to see options.")
 
 def handle_image_description(sender_id, message_attachments, context):
+    """Process image attachments and get their descriptions."""
     for attachment in message_attachments:
         if attachment['type'] == 'image':
             image_url = attachment['payload']['url']
@@ -83,9 +91,11 @@ def handle_image_description(sender_id, message_attachments, context):
             response_text = get_huggingface_response(context, question=False, image_url=image_url)
             send_message(sender_id, response_text)
             return  # Exit after processing the first image
+
     send_message(sender_id, "Please send an image.")
 
 def send_message(recipient_id, message_text):
+    """Send a message to the user."""
     payload = {
         'messaging_type': 'RESPONSE',
         'recipient': {'id': recipient_id},
@@ -107,17 +117,19 @@ def send_message(recipient_id, message_text):
         print(f"HTTP Request failed: {e}")
 
 def send_typing_indicator(recipient_id):
+    """Send a typing indicator to the user."""
     payload = {
         'recipient': {'id': recipient_id},
         'sender_action': 'typing_on'
     }
     try:
         requests.post(f'https://graph.facebook.com/v12.0/me/messages?access_token={PAGE_ACCESS_TOKEN}', json=payload)
-        time.sleep(1)
+        time.sleep(1)  # Simulate typing delay
     except requests.exceptions.RequestException as e:
         print(f"Failed to send typing indicator: {e}")
 
 def get_huggingface_response(context, question=True, image_url=None):
+    """Get response from Hugging Face model based on user input."""
     if question:
         user_messages = context['messages'][-10:]  # Get the last N messages
         messages = [{"role": "user", "content": msg} for msg in user_messages]
