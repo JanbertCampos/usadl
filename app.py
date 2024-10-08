@@ -1,8 +1,6 @@
-from flask import Flask, request
-import requests
+from flask import Flask, request, jsonify
 import os
 from huggingface_hub import InferenceClient
-import time
 
 app = Flask(__name__)
 
@@ -11,142 +9,69 @@ PAGE_ACCESS_TOKEN = os.environ.get('PAGE_ACCESS_TOKEN')
 HUGGINGFACES_API_KEY = os.environ.get('HUGGINGFACES_API_KEY')
 VERIFY_TOKEN = os.environ.get('VERIFY_TOKEN', '12345')
 
-# Initialize the Hugging Face API client
 client = InferenceClient(api_key=HUGGINGFACES_API_KEY)
 
-# Dictionary to store user contexts
-user_contexts = {}
-
-@app.route('/webhook', methods=['GET'])
-def verify():
-    if request.args.get('hub.mode') == 'subscribe' and request.args.get('hub.verify_token') == VERIFY_TOKEN:
-        return request.args.get('hub.challenge')
-    return 'Invalid verification token', 403
-
-@app.route('/webhook', methods=['POST'])
+@app.route('/webhook', methods=['GET', 'POST'])
 def webhook():
-    data = request.get_json()
-    print(f"Incoming data: {data}")  # Debugging line
+    if request.method == 'GET':
+        # Verify the webhook
+        token = request.args.get('hub.verify_token')
+        if token == VERIFY_TOKEN:
+            return request.args.get('hub.challenge'), 200
+        return 'Verification failed', 403
 
-    if 'entry' in data and 'messaging' in data['entry'][0]:
-        for event in data['entry'][0]['messaging']:
-            sender_id = event['sender']['id']
-            message_text = event.get('message', {}).get('text', None)
-            message_attachments = event.get('message', {}).get('attachments', [])
+    elif request.method == 'POST':
+        data = request.json
 
-            # Initialize or retrieve user context
-            context = user_contexts.get(sender_id, {'messages': [], 'mode': None})
+        # Process incoming messages
+        if 'entry' in data:
+            for entry in data['entry']:
+                messaging_events = entry.get('messaging', [])
+                for event in messaging_events:
+                    # Check if the message contains an image URL
+                    if 'message' in event and 'attachments' in event['message']:
+                        for attachment in event['message']['attachments']:
+                            if attachment['type'] == 'image':
+                                image_url = attachment['payload']['url']
+                                description = get_image_description(image_url)
+                                # Here you would send the description back to the user
+                                send_message(event['sender']['id'], description)
 
-            print(f"Current context for {sender_id}: {context}")  # Debugging line
+        return 'OK', 200
 
-            # Handle user commands based on context
-            if message_text:
-                message_text = message_text.lower().strip()
-                handle_user_input(sender_id, message_text, context, message_attachments)
+def get_image_description(image_url):
+    messages = [
+        {
+            "role": "user",
+            "content": [
+                {"type": "image_url", "image_url": {"url": image_url}},
+                {"type": "text", "text": "Describe this image in one sentence."},
+            ],
+        }
+    ]
 
-            user_contexts[sender_id] = context  # Update user context
-
-    return 'OK', 200
-
-def handle_user_input(sender_id, message_text, context, message_attachments):
-    if message_text == "get started":
-        send_message(sender_id, "Please choose an option:\n1. Ask a question\n2. Describe an image")
-        context['mode'] = "choose_option"
-        context['messages'].append(message_text)  # Store user command
-    elif context.get('mode') == "choose_option":
-        if message_text == "1":
-            context['mode'] = "ask_question"
-            send_message(sender_id, "You can now ask your question.")
-        elif message_text == "2":
-            context['mode'] = "describe_image"
-            send_message(sender_id, "Please send an image.")
-        else:
-            send_message(sender_id, "Invalid option. Please type 'get started' to see options again.")
-    elif context.get('mode') == "ask_question":
-        context['messages'].append(message_text)
-        send_typing_indicator(sender_id)
-        response_text = get_huggingface_response(context, question=True)
-        send_message(sender_id, response_text)
-    elif context.get('mode') == "describe_image":
-        if message_attachments:
-            handle_image_description(sender_id, message_attachments, context)
-        else:
-            send_message(sender_id, "I need an image to describe. Please send an image.")
-    else:
-        send_message(sender_id, "Please type 'get started' to see options.")
-
-def handle_image_description(sender_id, message_attachments, context):
-    for attachment in message_attachments:
-        if attachment['type'] == 'image':
-            image_url = attachment['payload']['url']
-            context['messages'].append(image_url)  # Store the image URL
-            send_typing_indicator(sender_id)
-            response_text = get_huggingface_response(context, question=False, image_url=image_url)
-            send_message(sender_id, response_text)
-            return  # Exit after processing the first image
-    send_message(sender_id, "Please send an image.")
+    for message in client.chat_completion(
+        model="meta-llama/Llama-3.2-11B-Vision-Instruct",
+        messages=messages,
+        max_tokens=500,
+        stream=False,
+    ):
+        return message.choices[0].delta.content
 
 def send_message(recipient_id, message_text):
-    payload = {
-        'messaging_type': 'RESPONSE',
+    # Function to send a message back to the user
+    message_data = {
         'recipient': {'id': recipient_id},
         'message': {'text': message_text}
     }
+    
     response = requests.post(
-        f'https://graph.facebook.com/v12.0/me/messages?access_token={PAGE_ACCESS_TOKEN}', 
-        json=payload
+        f'https://graph.facebook.com/v10.0/me/messages?access_token={PAGE_ACCESS_TOKEN}',
+        json=message_data
     )
     
     if response.status_code != 200:
-        error_info = response.json().get("error", {})
-        print(f"Failed to send message to {recipient_id}: {error_info.get('message')}")
-    else:
-        print(f"Message sent successfully to {recipient_id}: {message_text}")
-
-def send_typing_indicator(recipient_id):
-    payload = {
-        'recipient': {'id': recipient_id},
-        'sender_action': 'typing_on'
-    }
-    requests.post(f'https://graph.facebook.com/v12.0/me/messages?access_token={PAGE_ACCESS_TOKEN}', json=payload)
-    time.sleep(1)
-
-def get_huggingface_response(context, question=True, image_url=None):
-    if question:
-        user_messages = context['messages'][-10:]  # Get the last N messages
-        messages = [{"role": "user", "content": msg} for msg in user_messages]
-        
-        response = client.chat_completion(
-            model="meta-llama/Llama-3.2-3B-Instruct",
-            messages=messages,
-            max_tokens=500,
-            stream=False
-        )
-        
-        text = response.choices[0].message['content'] if response.choices else ""
-        return text or "I'm sorry, I couldn't generate a response."
-    
-    if image_url:
-        messages = [
-            {"role": "user", "content": [
-                {"type": "image_url", "image_url": {"url": image_url}},
-                {"type": "text", "text": "Describe this image in one sentence."}
-            ]}
-        ]
-        
-        response = client.chat_completion(
-            model="meta-llama/Llama-3.2-11B-Vision-Instruct",
-            messages=messages,
-            max_tokens=500,
-            stream=False,
-        )
-        
-        text = ""
-        for message in response:
-            text += message.choices[0].delta.content
-        return text or "I'm sorry, I couldn't describe the image."
-    
-    return "Invalid request."
+        print(f"Error sending message: {response.text}")
 
 if __name__ == '__main__':
-    app.run(port=5000, debug=True)
+    app.run(port=5000)
