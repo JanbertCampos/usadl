@@ -92,9 +92,14 @@ def send_message(recipient_id, message_text):
         'recipient': {'id': recipient_id},
         'message': {'text': message_text}
     }
-    response = requests.post(f'https://graph.facebook.com/v12.0/me/messages?access_token={PAGE_ACCESS_TOKEN}', json=payload)
+    response = requests.post(
+        f'https://graph.facebook.com/v12.0/me/messages?access_token={PAGE_ACCESS_TOKEN}', 
+        json=payload
+    )
+    
     if response.status_code != 200:
-        print(f"Failed to send message: {response.text}")
+        error_info = response.json().get("error", {})
+        print(f"Failed to send message to {recipient_id}: {error_info.get('message')}")
     else:
         print(f"Message sent successfully to {recipient_id}: {message_text}")
 
