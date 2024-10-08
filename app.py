@@ -36,7 +36,6 @@ def webhook():
 
             # Initialize or retrieve user context
             context = user_contexts.get(sender_id, {'messages': [], 'mode': None})
-
             print(f"Current context for {sender_id}: {context}")  # Debugging line
 
             # Handle user commands based on context
@@ -92,24 +91,31 @@ def send_message(recipient_id, message_text):
         'recipient': {'id': recipient_id},
         'message': {'text': message_text}
     }
-    response = requests.post(
-        f'https://graph.facebook.com/v12.0/me/messages?access_token={PAGE_ACCESS_TOKEN}', 
-        json=payload
-    )
-    
-    if response.status_code != 200:
-        error_info = response.json().get("error", {})
-        print(f"Failed to send message to {recipient_id}: {error_info.get('message')}")
-    else:
-        print(f"Message sent successfully to {recipient_id}: {message_text}")
+    try:
+        response = requests.post(
+            f'https://graph.facebook.com/v12.0/me/messages?access_token={PAGE_ACCESS_TOKEN}', 
+            json=payload
+        )
+        
+        if response.status_code != 200:
+            error_info = response.json().get("error", {})
+            print(f"Failed to send message to {recipient_id}: {error_info.get('message')}")
+        else:
+            print(f"Message sent successfully to {recipient_id}: {message_text}")
+
+    except requests.exceptions.RequestException as e:
+        print(f"HTTP Request failed: {e}")
 
 def send_typing_indicator(recipient_id):
     payload = {
         'recipient': {'id': recipient_id},
         'sender_action': 'typing_on'
     }
-    requests.post(f'https://graph.facebook.com/v12.0/me/messages?access_token={PAGE_ACCESS_TOKEN}', json=payload)
-    time.sleep(1)
+    try:
+        requests.post(f'https://graph.facebook.com/v12.0/me/messages?access_token={PAGE_ACCESS_TOKEN}', json=payload)
+        time.sleep(1)
+    except requests.exceptions.RequestException as e:
+        print(f"Failed to send typing indicator: {e}")
 
 def get_huggingface_response(context, question=True, image_url=None):
     if question:
