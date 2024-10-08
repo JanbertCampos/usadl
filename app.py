@@ -28,7 +28,7 @@ def webhook():
     data = request.get_json()
     print(f"Incoming data: {data}")  # Debugging line
 
-    if 'entry' in data and len(data['entry']) > 0 and 'messaging' in data['entry'][0]:
+    if 'entry' in data and 'messaging' in data['entry'][0]:
         for event in data['entry'][0]['messaging']:
             sender_id = event['sender']['id']
             message_text = event.get('message', {}).get('text', None)
@@ -71,8 +71,6 @@ def handle_user_input(sender_id, message_text, context, message_attachments):
         if message_attachments:
             handle_image_description(sender_id, message_attachments, context)
         else:
-            # If no image is attached, allow a text input
-            context['messages'].append(message_text)
             send_message(sender_id, "I need an image to describe. Please send an image.")
     else:
         send_message(sender_id, "Please type 'get started' to see options.")
@@ -135,7 +133,7 @@ def get_huggingface_response(context, question=True, image_url=None):
             model="meta-llama/Llama-3.2-11B-Vision-Instruct",
             messages=messages,
             max_tokens=500,
-            stream=True,
+            stream=False,
         )
         
         text = ""
