@@ -1,5 +1,6 @@
 from flask import Flask, request, jsonify
 import os
+import requests
 from huggingface_hub import InferenceClient
 
 app = Flask(__name__)
@@ -10,6 +11,10 @@ HUGGINGFACES_API_KEY = os.environ.get('HUGGINGFACES_API_KEY')
 VERIFY_TOKEN = os.environ.get('VERIFY_TOKEN', '12345')
 
 client = InferenceClient(api_key=HUGGINGFACES_API_KEY)
+
+@app.route('/')
+def index():
+    return "Webhook is running!", 200
 
 @app.route('/webhook', methods=['GET', 'POST'])
 def webhook():
@@ -40,23 +45,28 @@ def webhook():
         return 'OK', 200
 
 def get_image_description(image_url):
-    messages = [
-        {
-            "role": "user",
-            "content": [
-                {"type": "image_url", "image_url": {"url": image_url}},
-                {"type": "text", "text": "Describe this image in one sentence."},
-            ],
-        }
-    ]
+    try:
+        messages = [
+            {
+                "role": "user",
+                "content": [
+                    {"type": "image_url", "image_url": {"url": image_url}},
+                    {"type": "text", "text": "Describe this image in one sentence."},
+                ],
+            }
+        ]
 
-    for message in client.chat_completion(
-        model="meta-llama/Llama-3.2-11B-Vision-Instruct",
-        messages=messages,
-        max_tokens=500,
-        stream=False,
-    ):
-        return message.choices[0].delta.content
+        for message in client.chat_completion(
+            model="meta-llama/Llama-3.2-11B-Vision-Instruct",
+            messages=messages,
+            max_tokens=500,
+            stream=False,
+        ):
+            return message.choices[0].delta.content
+
+    except Exception as e:
+        print(f"Error retrieving description: {e}")
+        return "Could not retrieve description."
 
 def send_message(recipient_id, message_text):
     # Function to send a message back to the user
