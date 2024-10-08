@@ -11,6 +11,9 @@ VERIFY_TOKEN = os.environ.get('VERIFY_TOKEN', '12345')
 
 client = InferenceClient(api_key=HUGGINGFACES_API_KEY)
 
+# Dictionary to hold user contexts
+user_context = {}
+
 @app.route('/webhook', methods=['GET', 'POST'])
 def webhook():
     if request.method == 'GET':
@@ -33,6 +36,10 @@ def handle_message(data):
             if 'message' in event:
                 user_message = event['message'].get('text', '')
                 
+                # Initialize user context if not present
+                if sender_id not in user_context:
+                    user_context[sender_id] = {'last_question': None, 'last_answer': None}
+
                 if user_message.lower() == "ask for a question":
                     send_response(sender_id, "Please type your question.")
                 elif user_message.lower() == "describe an image":
@@ -43,7 +50,12 @@ def handle_message(data):
         print(f"Error processing message: {e}")
 
 def process_user_request(sender_id, content):
-    if "http" in content:  # Simple check for image URL
+    context = user_context[sender_id]
+    
+    # Save the content as the last question
+    context['last_question'] = content
+
+    if "http" in content:  # Check for image URL
         model = "meta-llama/Llama-3.2-11B-Vision-Instruct"
         response = client.chat_completion(
             model=model,
@@ -56,8 +68,8 @@ def process_user_request(sender_id, content):
             }],
             max_tokens=500,
         )
-        # Assuming the new response structure
         description = response['choices'][0]['message']['content']
+        context['last_answer'] = description  # Save the answer to the context
         send_response(sender_id, description)
     else:
         model = "meta-llama/Llama-3.2-3B-Instruct"
@@ -66,9 +78,12 @@ def process_user_request(sender_id, content):
             messages=[{"role": "user", "content": content}],
             max_tokens=500,
         )
-        # Update to access the content correctly
         answer = response['choices'][0]['message']['content']
+        context['last_answer'] = answer  # Save the answer to the context
         send_response(sender_id, answer)
+
+    # Update user context
+    user_context[sender_id] = context
 
 def send_response(sender_id, message):
     if not sender_id:
@@ -87,6 +102,6 @@ def send_response(sender_id, message):
     response = requests.post(url, json=payload)
     if response.status_code != 200:
         print(f"Error sending message: {response.status_code} - {response.text}")
-        
+
 if __name__ == '__main__':
     app.run(port=5000)
