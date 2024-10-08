@@ -2,7 +2,6 @@ from flask import Flask, request
 import requests
 import os
 from huggingface_hub import InferenceClient
-import time
 
 app = Flask(__name__)
 
@@ -11,146 +10,61 @@ HUGGINGFACES_API_KEY = os.environ.get('HUGGINGFACES_API_KEY')
 VERIFY_TOKEN = os.environ.get('VERIFY_TOKEN', '12345')
 
 client = InferenceClient(api_key=HUGGINGFACES_API_KEY)
-user_contexts = {}
 
-@app.route('/webhook', methods=['GET'])
-def verify():
-    if request.args.get('hub.mode') == 'subscribe' and request.args.get('hub.verify_token') == VERIFY_TOKEN:
-        return request.args.get('hub.challenge')
-    return 'Invalid verification token', 403
-
-@app.route('/webhook', methods=['POST'])
+@app.route('/webhook', methods=['GET', 'POST'])
 def webhook():
-    data = request.get_json()
-    print(f"Incoming data: {data}")
+    if request.method == 'GET':
+        # Verify the webhook
+        if request.args.get('hub.verify_token') == VERIFY_TOKEN:
+            return request.args.get('hub.challenge')
+        return 'Verification token mismatch', 403
 
-    if 'entry' in data and 'messaging' in data['entry'][0]:
-        for event in data['entry'][0]['messaging']:
-            sender_id = event['sender']['id']
-            message_text = event.get('message', {}).get('text', None)
-            message_attachments = event.get('message', {}).get('attachments', [])
+    elif request.method == 'POST':
+        data = request.json
+        # Extract message and sender
+        message_text = data['entry'][0]['messaging'][0]['message']['text']
+        sender_id = data['entry'][0]['messaging'][0]['sender']['id']
 
-            context = user_contexts.get(sender_id, {'messages': [], 'mode': None})
-            print(f"Current context for {sender_id}: {context}")
-
-            if message_text:
-                message_text = message_text.lower().strip()
-                handle_user_input(sender_id, message_text, context, message_attachments)
-
-            user_contexts[sender_id] = context
-
-    return 'OK', 200
-
-def handle_user_input(sender_id, message_text, context, message_attachments):
-    if message_text == "get started":
-        send_message(sender_id, "Please choose an option:\n1. Ask a question\n2. Describe an image")
-        context['mode'] = "choose_option"
-        context['messages'].append(message_text)
-
-    elif context.get('mode') == "choose_option":
-        if message_text == "1":
-            context['mode'] = "ask_question"
-            send_message(sender_id, "You can now ask your question.")
-        elif message_text == "2":
-            context['mode'] = "describe_image"
-            send_message(sender_id, "Please send an image.")
+        # Determine action based on message
+        if "describe" in message_text:
+            image_url = extract_image_url(message_text)  # Implement this function
+            model = "meta-llama/Llama-3.2-11B-Vision-Instruct"
+            messages = [
+                {"role": "user", "content": [
+                    {"type": "image_url", "image_url": {"url": image_url}},
+                    {"type": "text", "text": "Describe this image."}
+                ]}
+            ]
         else:
-            send_message(sender_id, "Invalid option. Please type 'get started' to see options again.")
+            model = "meta-llama/Llama-3.2-3B-Instruct"
+            messages = [{"role": "user", "content": message_text}]
 
-    elif context.get('mode') == "ask_question":
-        context['messages'].append(message_text)
-        send_typing_indicator(sender_id)
-        response_text = get_huggingface_response(context, question=True)
-        send_message(sender_id, response_text)
-
-    elif context.get('mode') == "describe_image":
-        if message_attachments:
-            handle_image_description(sender_id, message_attachments, context)
-        else:
-            send_message(sender_id, "I need an image to describe. Please send an image.")
-
-    else:
-        send_message(sender_id, "Please type 'get started' to see options.")
-
-def handle_image_description(sender_id, message_attachments, context):
-    print(f"Received attachments: {message_attachments}")  # Debugging log
-    if message_attachments:
-        for attachment in message_attachments:
-            if attachment['type'] == 'image':
-                image_url = attachment['payload']['url']
-                context['messages'].append(image_url)
-                print(f"Processing image URL: {image_url}")  # Log the image URL being processed
-                send_typing_indicator(sender_id)
-                response_text = get_huggingface_response(context, question=False, image_url=image_url)
-                send_message(sender_id, response_text)
-                return
-
-    send_message(sender_id, "Please send a valid images. Make sure it's in a supported format.")
-
-def send_message(recipient_id, message_text):
-    payload = {
-        'messaging_type': 'RESPONSE',
-        'recipient': {'id': recipient_id},
-        'message': {'text': message_text}
-    }
-    try:
-        response = requests.post(
-            f'https://graph.facebook.com/v12.0/me/messages?access_token={PAGE_ACCESS_TOKEN}', 
-            json=payload
+        # Call the Hugging Face API
+        response = client.chat_completion(
+            model=model,
+            messages=messages,
+            max_tokens=500
         )
-        
-        if response.status_code != 200:
-            error_info = response.json().get("error", {})
-            print(f"Failed to send message to {recipient_id}: {error_info.get('message')}")
-        else:
-            print(f"Message sent successfully to {recipient_id}: {message_text}")
 
-    except requests.exceptions.RequestException as e:
-        print(f"HTTP Request failed: {e}")
+        # Send response back to user
+        reply_text = response.choices[0].delta.content
+        send_message(sender_id, reply_text)  # Function to send messages back
 
-def send_typing_indicator(recipient_id):
+        return 'Message processed', 200
+
+def send_message(recipient_id, text):
+    url = f'https://graph.facebook.com/v2.6/me/messages?access_token={PAGE_ACCESS_TOKEN}'
     payload = {
         'recipient': {'id': recipient_id},
-        'sender_action': 'typing_on'
+        'message': {'text': text}
     }
-    try:
-        requests.post(f'https://graph.facebook.com/v12.0/me/messages?access_token={PAGE_ACCESS_TOKEN}', json=payload)
-        time.sleep(1)  # Simulate typing delay
-    except requests.exceptions.RequestException as e:
-        print(f"Failed to send typing indicator: {e}")
+    requests.post(url, json=payload)
 
-def get_huggingface_response(context, question=True, image_url=None):
-    if question:
-        user_messages = context['messages'][-10:]
-        messages = [{"role": "user", "content": msg} for msg in user_messages]
-
-        for message in client.chat_completion(
-            model="meta-llama/Llama-3.2-3B-Instruct",
-            messages=messages,
-            max_tokens=500,
-            stream=True,
-        ):
-            text = message.choices[0].delta.content if message.choices else ""
-            return text or "I'm sorry, I couldn't generate a response."
-
-    if image_url:
-        messages = [
-            {"role": "user", "content": [
-                {"type": "image_url", "image_url": {"url": image_url}},
-                {"type": "text", "text": "Please provide a detailed description of this image."},
-            ]}
-        ]
-
-        for message in client.chat_completion(
-            model="meta-llama/Llama-3.2-11B-Vision-Instruct",
-            messages=messages,
-            max_tokens=500,
-            stream=True,
-        ):
-            text = message.choices[0].delta.content if message.choices else ""
-            return text or "I'm sorry, I couldn't describe the image."
-    
-    return "Invalid request."
+def extract_image_url(message_text):
+    # Logic to extract image URL from the message text
+    # This is a placeholder; you should implement your own extraction logic
+    # For example, you might look for a URL in the text
+    return "extracted_image_url"
 
 if __name__ == '__main__':
-    app.run(port=5000, debug=True)
+    app.run(port=5000)
