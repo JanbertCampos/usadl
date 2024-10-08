@@ -45,19 +45,31 @@ def webhook():
         if 'entry' in data and 'messaging' in data['entry'][0]:
             for event in data['entry'][0]['messaging']:
                 sender_id = event['sender']['id']
-                message_text = event.get('message', {}).get('text', None)
-                message_attachments = event.get('message', {}).get('attachments', [])
+                recipient_id = event['recipient']['id']
+                timestamp = event['timestamp']
+                message = event.get('message', {})
+                delivery = event.get('delivery', {})
+                read = event.get('read', {})
 
-                # Initialize or retrieve user context
-                context = user_contexts.get(sender_id, {'messages': [], 'mode': None})
-                logger.debug(f"Current context for {sender_id}: {context}")
+                logger.debug(f"Event: sender_id={sender_id}, recipient_id={recipient_id}, timestamp={timestamp}, message={message}, delivery={delivery}, read={read}")
 
-                # Handle user commands based on context
-                if message_text:
-                    message_text = message_text.lower().strip()
-                    handle_user_input(sender_id, message_text, context, message_attachments)
+                if message:
+                    message_text = message.get('text', None)
+                    message_attachments = message.get('attachments', [])
+                    is_echo = message.get('is_echo', False)
 
-                user_contexts[sender_id] = context  # Update user context
+                    # Ignore echo messages
+                    if not is_echo:
+                        # Initialize or retrieve user context
+                        context = user_contexts.get(sender_id, {'messages': [], 'mode': None})
+                        logger.debug(f"Current context for {sender_id}: {context}")
+
+                        # Handle user commands based on context
+                        if message_text:
+                            message_text = message_text.lower().strip()
+                            handle_user_input(sender_id, message_text, context, message_attachments)
+
+                        user_contexts[sender_id] = context  # Update user context
 
         return 'OK', 200
     except Exception as e:
