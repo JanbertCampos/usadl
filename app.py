@@ -61,7 +61,7 @@ def webhook():
                     # Ignore echo messages
                     if not is_echo:
                         # Initialize or retrieve user context
-                        context = user_contexts.get(sender_id, {'messages': [], 'mode': None})
+                        context = user_contexts.setdefault(sender_id, {'messages': [], 'mode': None})
                         logger.debug(f"Current context for {sender_id}: {context}")
 
                         # Handle user commands based on context
