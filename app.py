@@ -1,7 +1,8 @@
-from flask import Flask, request, jsonify
-import os
+from flask import Flask, request
 import requests
+import os
 from huggingface_hub import InferenceClient
+import time
 
 app = Flask(__name__)
 
@@ -10,107 +11,142 @@ PAGE_ACCESS_TOKEN = os.environ.get('PAGE_ACCESS_TOKEN')
 HUGGINGFACES_API_KEY = os.environ.get('HUGGINGFACES_API_KEY')
 VERIFY_TOKEN = os.environ.get('VERIFY_TOKEN', '12345')
 
+# Initialize the Hugging Face API client
 client = InferenceClient(api_key=HUGGINGFACES_API_KEY)
 
-# In-memory storage for conversation context
-user_context = {}
+# Dictionary to store user contexts
+user_contexts = {}
 
-@app.route('/')
-def index():
-    return "Webhook is running!", 200
+@app.route('/webhook', methods=['GET'])
+def verify():
+    if request.args.get('hub.mode') == 'subscribe' and request.args.get('hub.verify_token') == VERIFY_TOKEN:
+        return request.args.get('hub.challenge')
+    return 'Invalid verification token', 403
 
-@app.route('/webhook', methods=['GET', 'POST'])
+@app.route('/webhook', methods=['POST'])
 def webhook():
-    if request.method == 'GET':
-        token = request.args.get('hub.verify_token')
-        if token == VERIFY_TOKEN:
-            return request.args.get('hub.challenge'), 200
-        return 'Verification failed', 403
+    data = request.get_json()
+    print(f"Incoming data: {data}")  # Debugging line
 
-    elif request.method == 'POST':
-        data = request.json
+    if 'entry' in data and 'messaging' in data['entry'][0]:
+        for event in data['entry'][0]['messaging']:
+            sender_id = event['sender']['id']
+            message_text = event.get('message', {}).get('text', None)
+            message_attachments = event.get('message', {}).get('attachments', [])
 
-        if 'entry' in data:
-            for entry in data['entry']:
-                messaging_events = entry.get('messaging', [])
-                for event in messaging_events:
-                    sender_id = event['sender']['id']
+            # Initialize or retrieve user context
+            context = user_contexts.get(sender_id, {'messages': [], 'mode': None})
 
-                    # Handle image messages
-                    if 'message' in event and 'attachments' in event['message']:
-                        for attachment in event['message']['attachments']:
-                            if attachment['type'] == 'image':
-                                image_url = attachment['payload']['url']
-                                print(f"Received image URL: {image_url}")
-                                description = get_image_description(image_url)
-                                store_context(sender_id, "last_description", description)
-                                send_message(sender_id, description)
+            print(f"Current context for {sender_id}: {context}")  # Debugging line
 
-                    # Handle text messages
-                    elif 'message' in event and 'text' in event['message']:
-                        user_message = event['message']['text']
-                        follow_up_response = handle_follow_up(sender_id, user_message)
-                        send_message(sender_id, follow_up_response)
+            # Handle user commands based on context
+            if message_text:
+                message_text = message_text.lower().strip()
+                handle_user_input(sender_id, message_text, context, message_attachments)
 
-        return 'OK', 200
+            user_contexts[sender_id] = context  # Update user context
 
-def get_image_description(image_url):
-    try:
+    return 'OK', 200
+
+def handle_user_input(sender_id, message_text, context, message_attachments):
+    if message_text == "get started":
+        send_message(sender_id, "Please choose an option:\n1. Ask a question\n2. Describe an image")
+        context['mode'] = "choose_option"
+        context['messages'].append(message_text)  # Store user command
+    elif context.get('mode') == "choose_option":
+        if message_text == "1":
+            context['mode'] = "ask_question"
+            send_message(sender_id, "You can now ask your question.")
+        elif message_text == "2":
+            context['mode'] = "describe_image"
+            send_message(sender_id, "Please send an image.")
+        else:
+            send_message(sender_id, "Invalid option. Please type 'get started' to see options again.")
+    elif context.get('mode') == "ask_question":
+        context['messages'].append(message_text)
+        send_typing_indicator(sender_id)
+        response_text = get_huggingface_response(context, question=True)
+        send_message(sender_id, response_text)
+    elif context.get('mode') == "describe_image":
+        if message_attachments:
+            handle_image_description(sender_id, message_attachments, context)
+        else:
+            send_message(sender_id, "I need an image to describe. Please send an image.")
+    else:
+        send_message(sender_id, "Please type 'get started' to see options.")
+
+def handle_image_description(sender_id, message_attachments, context):
+    for attachment in message_attachments:
+        if attachment['type'] == 'image':
+            image_url = attachment['payload']['url']
+            context['messages'].append(image_url)  # Store the image URL
+            send_typing_indicator(sender_id)
+            response_text = get_huggingface_response(context, question=False, image_url=image_url)
+            send_message(sender_id, response_text)
+            return  # Exit after processing the first image
+    send_message(sender_id, "Please send an image.")
+
+def send_message(recipient_id, message_text):
+    payload = {
+        'messaging_type': 'RESPONSE',
+        'recipient': {'id': recipient_id},
+        'message': {'text': message_text}
+    }
+    response = requests.post(
+        f'https://graph.facebook.com/v12.0/me/messages?access_token={PAGE_ACCESS_TOKEN}', 
+        json=payload
+    )
+    
+    if response.status_code != 200:
+        error_info = response.json().get("error", {})
+        print(f"Failed to send message to {recipient_id}: {error_info.get('message')}")
+    else:
+        print(f"Message sent successfully to {recipient_id}: {message_text}")
+
+def send_typing_indicator(recipient_id):
+    payload = {
+        'recipient': {'id': recipient_id},
+        'sender_action': 'typing_on'
+    }
+    requests.post(f'https://graph.facebook.com/v12.0/me/messages?access_token={PAGE_ACCESS_TOKEN}', json=payload)
+    time.sleep(1)
+
+def get_huggingface_response(context, question=True, image_url=None):
+    if question:
+        user_messages = context['messages'][-10:]  # Get the last N messages
+        messages = [{"role": "user", "content": msg} for msg in user_messages]
+        
+        response = client.chat_completion(
+            model="meta-llama/Llama-3.2-3B-Instruct",
+            messages=messages,
+            max_tokens=500,
+            stream=False
+        )
+        
+        text = response.choices[0].message['content'] if response.choices else ""
+        return text or "I'm sorry, I couldn't generate a response."
+    
+    if image_url:
         messages = [
-            {
-                "role": "user",
-                "content": [
-                    {"type": "image_url", "image_url": {"url": image_url}},
-                    {"type": "text", "text": "Describe this image in one sentence."},
-                ],
-            }
+            {"role": "user", "content": [
+                {"type": "image_url", "image_url": {"url": image_url}},
+                {"type": "text", "text": "Please provide a detailed description of this image."}
+            ]}
         ]
-
+        
         response = client.chat_completion(
             model="meta-llama/Llama-3.2-11B-Vision-Instruct",
             messages=messages,
             max_tokens=500,
             stream=False,
         )
-
+        
         if response and hasattr(response, 'choices') and len(response.choices) > 0:
-            return response.choices[0].message['content']
-        else:
-            return "I couldn't retrieve a description at this moment."
-
-    except Exception as e:
-        print(f"Error retrieving description: {e}")
-        return "I encountered an error while trying to describe the image."
-
-def handle_follow_up(sender_id, user_message):
-    context = user_context.get(sender_id, {})
-    last_description = context.get("last_description")
-
-    if last_description:
-        # Generate a more engaging follow-up question
-        follow_up_question = f"You asked: '{user_message}'. Based on the previous image description: '{last_description}', what specific aspect are you curious about?"
-        return follow_up_question
-    else:
-        return "I don't have any previous context. Could you provide more details or ask a different question?"
-
-def store_context(sender_id, key, value):
-    if sender_id not in user_context:
-        user_context[sender_id] = {}
-    user_context[sender_id][key] = value
-
-def send_message(recipient_id, message_text):
-    message_data = {
-        'recipient': {'id': recipient_id},
-        'message': {'text': message_text}
-    }
-
-    response = requests.post(
-        f'https://graph.facebook.com/v10.0/me/messages?access_token={PAGE_ACCESS_TOKEN}',
-        json=message_data
-    )
-
-    if response.status_code != 200:
-        print(f"Error sending message: {response.text}")
+            return response.choices[0].message['content'] or "I'm sorry, I couldn't describe the image."
+        
+        return "I'm sorry, I couldn't describe the image."
+    
+    return "Invalid request."
 
 if __name__ == '__main__':
-    app.run(port=5000)
+    app.run(port=5000, debug=True)
