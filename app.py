@@ -56,7 +56,8 @@ def process_user_request(sender_id, content):
             }],
             max_tokens=500,
         )
-        description = response.choices[0].delta.content
+        # Assuming the new response structure
+        description = response['choices'][0]['message']['content']
         send_response(sender_id, description)
     else:
         model = "meta-llama/Llama-3.2-3B-Instruct"
@@ -65,7 +66,8 @@ def process_user_request(sender_id, content):
             messages=[{"role": "user", "content": content}],
             max_tokens=500,
         )
-        answer = response.choices[0].delta.content
+        # Update to access the content correctly
+        answer = response['choices'][0]['message']['content']
         send_response(sender_id, answer)
 
 def send_response(sender_id, message):
