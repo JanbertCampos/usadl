@@ -2,6 +2,8 @@ from flask import Flask, request
 import os
 import requests
 from huggingface_hub import InferenceClient
+import logging
+from datetime import datetime
 
 app = Flask(__name__)
 
@@ -13,6 +15,9 @@ client = InferenceClient(api_key=HUGGINGFACES_API_KEY)
 
 # Dictionary to hold user contexts
 user_context = {}
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 @app.route('/webhook', methods=['GET', 'POST'])
 def webhook():
@@ -34,7 +39,7 @@ def handle_message(data):
         for event in messaging_events:
             sender_id = event['sender']['id']
             if 'message' in event:
-                user_message = event['message'].get('text', '')
+                user_message = event['message'].get('text', '').strip()
                 attachments = event['message'].get('attachments', [])
 
                 # Initialize user context if not present
@@ -50,7 +55,7 @@ def handle_message(data):
                 else:
                     process_user_request(sender_id, user_message)
     except Exception as e:
-        print(f"Error processing message: {e}")
+        logger.error(f"Error processing message: {e}", exc_info=True)
 
 def process_image_attachment(sender_id, attachments):
     image_url = attachments[0]['payload']['url']  # Get the URL of the image
@@ -109,7 +114,7 @@ def process_user_request(sender_id, content):
 
 def send_response(sender_id, message):
     if not sender_id:
-        print("Invalid sender ID. Cannot send response.")
+        logger.warning("Invalid sender ID. Cannot send response.")
         return
 
     # Ensure the message is within the allowed length
@@ -123,7 +128,7 @@ def send_response(sender_id, message):
     }
     response = requests.post(url, json=payload)
     if response.status_code != 200:
-        print(f"Error sending message: {response.status_code} - {response.text}")
+        logger.error(f"Error sending message: {response.status_code} - {response.text}")
 
 if __name__ == '__main__':
     app.run(port=5000)
