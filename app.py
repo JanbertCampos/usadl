@@ -85,8 +85,6 @@ def handle_image_description(sender_id, message_attachments, context):
 
     send_message(sender_id, "Please send an image.")
 
-
-
 def send_message(recipient_id, message_text):
     payload = {
         'messaging_type': 'RESPONSE',
