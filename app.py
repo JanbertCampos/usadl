@@ -68,22 +68,25 @@ def handle_user_input(sender_id, message_text, context, message_attachments):
         response_text = get_huggingface_response(context, question=True)
         send_message(sender_id, response_text)
     elif context.get('mode') == "describe_image":
-        handle_image_description(sender_id, message_attachments, context)
+        if message_attachments:
+            handle_image_description(sender_id, message_attachments, context)
+        else:
+            # If no image is attached, allow a text input
+            context['messages'].append(message_text)
+            send_message(sender_id, "I need an image to describe. Please send an image.")
     else:
         send_message(sender_id, "Please type 'get started' to see options.")
 
 def handle_image_description(sender_id, message_attachments, context):
-    if message_attachments:
-        for attachment in message_attachments:
-            if attachment['type'] == 'image':
-                image_url = attachment['payload']['url']
-                context['messages'].append(image_url)  # Store the image URL
-                send_typing_indicator(sender_id)
-                response_text = get_huggingface_response(context, question=False, image_url=image_url)
-                send_message(sender_id, response_text)
-                return  # Exit after processing the first image
-    else:
-        send_message(sender_id, "Please send an image.")
+    for attachment in message_attachments:
+        if attachment['type'] == 'image':
+            image_url = attachment['payload']['url']
+            context['messages'].append(image_url)  # Store the image URL
+            send_typing_indicator(sender_id)
+            response_text = get_huggingface_response(context, question=False, image_url=image_url)
+            send_message(sender_id, response_text)
+            return  # Exit after processing the first image
+    send_message(sender_id, "Please send an image.")
 
 def send_message(recipient_id, message_text):
     payload = {
