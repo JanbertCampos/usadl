@@ -43,7 +43,7 @@ def webhook():
                                 image_url = attachment['payload']['url']
                                 print(f"Received image URL: {image_url}")
                                 description = get_image_description(image_url)
-                                store_context(sender_id, "image_description", description)
+                                store_context(sender_id, "last_description", description)
                                 send_message(sender_id, description)
 
                     # Handle text messages
@@ -76,20 +76,22 @@ def get_image_description(image_url):
         if response and hasattr(response, 'choices') and len(response.choices) > 0:
             return response.choices[0].message['content']
         else:
-            return "Could not retrieve description."
+            return "I couldn't retrieve a description at this moment."
 
     except Exception as e:
         print(f"Error retrieving description: {e}")
-        return "Could not retrieve description."
+        return "I encountered an error while trying to describe the image."
 
 def handle_follow_up(sender_id, user_message):
     context = user_context.get(sender_id, {})
-    last_description = context.get("image_description")
+    last_description = context.get("last_description")
 
     if last_description:
-        return f"You asked: '{user_message}'. Based on the image description: '{last_description}', what specific details would you like to know more about?"
-
-    return "I don't have any previous context. Could you please clarify your question?"
+        # Generate a more engaging follow-up question
+        follow_up_question = f"You asked: '{user_message}'. Based on the previous image description: '{last_description}', what specific aspect are you curious about?"
+        return follow_up_question
+    else:
+        return "I don't have any previous context. Could you provide more details or ask a different question?"
 
 def store_context(sender_id, key, value):
     if sender_id not in user_context:
