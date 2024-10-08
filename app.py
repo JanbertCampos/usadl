@@ -88,10 +88,20 @@ def process_user_request(sender_id, content):
     model = "meta-llama/Llama-3.2-3B-Instruct"
     response = client.chat_completion(
         model=model,
-        messages=[{"role": "user", "content": content}] + [{"role": "system", "content": f"Previous interactions: {ctx['question']} -> {ctx['answer']}"}
-                                                             for ctx in context['context']],
+        messages=[{"role": "user", "content": content}] + 
+                  [{"role": "system", "content": f"Previous interactions: {ctx['question']} -> {ctx['answer']}"}
+                   for ctx in context['context']],
         max_tokens=500,
     )
+    
+    # Add specific follow-up handling for color schemes
+    if "color scheme" in content.lower():
+        follow_up_message = (
+            "To help me identify the color schemes, could you please describe any colors or styles you remember from the image?"
+        )
+        send_response(sender_id, follow_up_message)
+        return
+
     answer = response['choices'][0]['message']['content']
     context['last_answer'] = answer  # Save the answer to the context
     send_response(sender_id, answer)
