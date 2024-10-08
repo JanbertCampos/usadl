@@ -67,6 +67,7 @@ def handle_user_input(sender_id, message_text, context, message_attachments):
         if message_attachments:
             handle_image_description(sender_id, message_attachments, context)
         else:
+            # Ignore any text message while in describe_image mode
             send_message(sender_id, "I need an image to describe. Please send an image.")
     
     else:
