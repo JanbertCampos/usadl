@@ -74,17 +74,20 @@ def handle_user_input(sender_id, message_text, context, message_attachments):
 
 def handle_image_description(sender_id, message_attachments, context):
     print(f"Received attachments: {message_attachments}")  # Debugging log
-    for attachment in message_attachments:
-        if attachment['type'] == 'image':
-            image_url = attachment['payload']['url']
-            context['messages'].append(image_url)
-            print(f"Processing image URL: {image_url}")  # Log the image URL being processed
-            send_typing_indicator(sender_id)
-            response_text = get_huggingface_response(context, question=False, image_url=image_url)
-            send_message(sender_id, response_text)
-            return
+    if message_attachments:
+        for attachment in message_attachments:
+            print(f"Attachment type: {attachment['type']}")  # Log attachment type
+            if attachment['type'] == 'image':
+                image_url = attachment['payload']['url']
+                context['messages'].append(image_url)
+                print(f"Processing image URL: {image_url}")  # Log the image URL being processed
+                send_typing_indicator(sender_id)
+                response_text = get_huggingface_response(context, question=False, image_url=image_url)
+                send_message(sender_id, response_text)
+                return
 
     send_message(sender_id, "Please send a valid image. Make sure it's in a supported format.")
+
 
 def send_message(recipient_id, message_text):
     payload = {
