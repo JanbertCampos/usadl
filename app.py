@@ -72,7 +72,6 @@ def handle_user_input(sender_id, message_text, context, message_attachments):
     else:
         send_message(sender_id, "Please type 'get started' to see options.")
 
-
 def handle_image_description(sender_id, message_attachments, context):
     print(f"Received attachments: {message_attachments}")  # Debugging log
     for attachment in message_attachments:
@@ -85,7 +84,7 @@ def handle_image_description(sender_id, message_attachments, context):
             send_message(sender_id, response_text)
             return
 
-    send_message(sender_id, "Please send an image.")
+    send_message(sender_id, "Please send a valid image. Make sure it's in a supported format.")
 
 def send_message(recipient_id, message_text):
     payload = {
@@ -121,19 +120,22 @@ def send_typing_indicator(recipient_id):
 
 def get_huggingface_response(context, question=True, image_url=None):
     if question:
-        user_messages = context['messages'][-10:]
+        user_messages = context['messages'][-10:]  # Get the last 10 messages
         messages = [{"role": "user", "content": msg} for msg in user_messages]
         
-        response = client.chat_completion(
-            model="meta-llama/Llama-3.2-3B-Instruct",
-            messages=messages,
-            max_tokens=500,
-            stream=False
-        )
-        
-        text = response.choices[0].message['content'] if response.choices else ""
-        return text or "I'm sorry, I couldn't generate a response."
-    
+        try:
+            response = client.chat_completion(
+                model="meta-llama/Llama-3.2-3B-Instruct",
+                messages=messages,
+                max_tokens=500,
+                stream=False
+            )
+            text = response.choices[0].message['content'] if response.choices else ""
+            return text or "I'm sorry, I couldn't generate a response."
+        except Exception as e:
+            print(f"Error fetching response for question: {e}")
+            return "I'm sorry, there was an error processing your question."
+
     if image_url:
         messages = [
             {"role": "user", "content": [
@@ -142,18 +144,20 @@ def get_huggingface_response(context, question=True, image_url=None):
             ]}
         ]
         
-        response = client.chat_completion(
-            model="meta-llama/Llama-3.2-11B-Vision-Instruct",
-            messages=messages,
-            max_tokens=500,
-            stream=False,
-        )
-        
-        if response and hasattr(response, 'choices') and len(response.choices) > 0:
-            return response.choices[0].message['content'] or "I'm sorry, I couldn't describe the image."
-        
-        return "I'm sorry, I couldn't describe the image."
-    
+        try:
+            response = client.chat_completion(
+                model="meta-llama/Llama-3.2-11B-Vision-Instruct",
+                messages=messages,
+                max_tokens=500,
+                stream=False,
+            )
+            if response and hasattr(response, 'choices') and len(response.choices) > 0:
+                return response.choices[0].message['content'] or "I'm sorry, I couldn't describe the image."
+            return "I'm sorry, I couldn't describe the image."
+        except Exception as e:
+            print(f"Error fetching response for image description: {e}")
+            return "I'm sorry, there was an error processing the image."
+
     return "Invalid request."
 
 if __name__ == '__main__':
