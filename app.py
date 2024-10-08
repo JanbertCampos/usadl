@@ -104,7 +104,10 @@ def handle_image_description(sender_id, message_attachments, context):
             context['messages'].append(image_url)  # Store the image URL
             send_typing_indicator(sender_id)
             response_text = get_huggingface_response(context, question=False, image_url=image_url)
-            send_message(sender_id, response_text)
+            if response_text:
+                send_message(sender_id, response_text)
+            else:
+                send_message(sender_id, "I'm sorry, I couldn't describe the image.")
             return  # Exit after processing the first image
 
     send_message(sender_id, "Please send an image.")
