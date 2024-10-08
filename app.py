@@ -72,6 +72,7 @@ def handle_user_input(sender_id, message_text, context, message_attachments):
     else:
         send_message(sender_id, "Please type 'get started' to see options.")
 
+
 def handle_image_description(sender_id, message_attachments, context):
     print(f"Received attachments: {message_attachments}")  # Debugging log
     for attachment in message_attachments:
