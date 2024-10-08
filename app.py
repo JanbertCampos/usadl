@@ -35,7 +35,8 @@ def handle_message(data):
             sender_id = event['sender']['id']
             if 'message' in event:
                 user_message = event['message'].get('text', '')
-                
+                attachments = event['message'].get('attachments', [])
+
                 # Initialize user context if not present
                 if sender_id not in user_context:
                     user_context[sender_id] = {'last_question': None, 'last_answer': None}
@@ -44,10 +45,31 @@ def handle_message(data):
                     send_response(sender_id, "Please type your question.")
                 elif user_message.lower() == "describe an image":
                     send_response(sender_id, "Please provide the image URL.")
+                elif attachments:
+                    # Handle image attachments
+                    process_image_attachment(sender_id, attachments)
                 else:
                     process_user_request(sender_id, user_message)
     except Exception as e:
         print(f"Error processing message: {e}")
+
+def process_image_attachment(sender_id, attachments):
+    image_url = attachments[0]['payload']['url']  # Get the URL of the image
+    model = "meta-llama/Llama-3.2-11B-Vision-Instruct"
+    
+    response = client.chat_completion(
+        model=model,
+        messages=[{
+            "role": "user",
+            "content": [
+                {"type": "image_url", "image_url": {"url": image_url}},
+                {"type": "text", "text": "Describe this image in one sentence."},
+            ],
+        }],
+        max_tokens=500,
+    )
+    description = response['choices'][0]['message']['content']
+    send_response(sender_id, description)
 
 def process_user_request(sender_id, content):
     context = user_context[sender_id]
@@ -55,32 +77,15 @@ def process_user_request(sender_id, content):
     # Save the content as the last question
     context['last_question'] = content
 
-    if "http" in content:  # Check for image URL
-        model = "meta-llama/Llama-3.2-11B-Vision-Instruct"
-        response = client.chat_completion(
-            model=model,
-            messages=[{
-                "role": "user",
-                "content": [
-                    {"type": "image_url", "image_url": {"url": content}},
-                    {"type": "text", "text": "Describe this image in one sentence."},
-                ],
-            }],
-            max_tokens=500,
-        )
-        description = response['choices'][0]['message']['content']
-        context['last_answer'] = description  # Save the answer to the context
-        send_response(sender_id, description)
-    else:
-        model = "meta-llama/Llama-3.2-3B-Instruct"
-        response = client.chat_completion(
-            model=model,
-            messages=[{"role": "user", "content": content}],
-            max_tokens=500,
-        )
-        answer = response['choices'][0]['message']['content']
-        context['last_answer'] = answer  # Save the answer to the context
-        send_response(sender_id, answer)
+    model = "meta-llama/Llama-3.2-3B-Instruct"
+    response = client.chat_completion(
+        model=model,
+        messages=[{"role": "user", "content": content}],
+        max_tokens=500,
+    )
+    answer = response['choices'][0]['message']['content']
+    context['last_answer'] = answer  # Save the answer to the context
+    send_response(sender_id, answer)
 
     # Update user context
     user_context[sender_id] = context
