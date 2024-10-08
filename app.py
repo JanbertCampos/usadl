@@ -27,7 +27,7 @@ def webhook():
 
 def handle_message(data):
     user_selection = data.get('selection')  # e.g., 'ask for a question' or 'describe an image'
-    content = data.get('content')  # e.g., question text or image URL
+    content = data.get('content')  # e.g., question texts or image URL
 
     if user_selection == "ask for a question":
         model = "meta-llama/Llama-3.2-3B-Instruct"
