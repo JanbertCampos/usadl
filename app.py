@@ -39,7 +39,7 @@ def handle_message(data):
 
                 # Initialize user context if not present
                 if sender_id not in user_context:
-                    user_context[sender_id] = {'last_question': None, 'last_answer': None, 'context': []}
+                    user_context[sender_id] = {'last_question': None, 'last_answer': None, 'context': [], 'image_description': None}
 
                 if user_message.lower() == "ask for a question":
                     send_response(sender_id, "Please type your question.")
@@ -70,8 +70,10 @@ def process_image_attachment(sender_id, attachments):
     )
     description = response['choices'][0]['message']['content']
     send_response(sender_id, description)
-    # Update context with the description
+    
+    # Update context with the image description
     user_context[sender_id]['last_answer'] = description
+    user_context[sender_id]['image_description'] = description  # Store the image description for follow-ups
 
 def process_user_request(sender_id, content):
     context = user_context[sender_id]
@@ -79,9 +81,9 @@ def process_user_request(sender_id, content):
     # Save the content as the last question
     context['last_question'] = content
 
-    # Add previous question and answer to the context for follow-up
-    if context['last_answer']:
-        context['context'].append({"question": context['last_question'], "answer": context['last_answer']})
+    # If the last answer was an image description, include it in the context
+    if context['image_description']:
+        context['context'].append({"question": context['last_question'], "answer": context['image_description']})
 
     model = "meta-llama/Llama-3.2-3B-Instruct"
     response = client.chat_completion(
