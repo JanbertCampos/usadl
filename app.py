@@ -85,7 +85,7 @@ def handle_image_description(sender_id, message_attachments, context):
                 send_message(sender_id, response_text)
                 return
 
-    send_message(sender_id, "Please send a valid image. Make sure it's in a supported format.")
+    send_message(sender_id, "Please send a valid images. Make sure it's in a supported format.")
 
 def send_message(recipient_id, message_text):
     payload = {
