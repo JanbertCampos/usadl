@@ -68,4 +68,4 @@ def send_response(sender_id, message):
         print(f"Error sending message: {response.status_code} - {response.text}")
 
 if __name__ == '__main__':
-    app.run(debug=True)
+    app.run(port=5000)
