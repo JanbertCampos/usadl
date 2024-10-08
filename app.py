@@ -73,6 +73,7 @@ def handle_user_input(sender_id, message_text, context, message_attachments):
         send_message(sender_id, "Please type 'get started' to see options.")
 
 def handle_image_description(sender_id, message_attachments, context):
+    print(f"Received attachments: {message_attachments}")  # Debugging log
     for attachment in message_attachments:
         if attachment['type'] == 'image':
             image_url = attachment['payload']['url']
@@ -83,6 +84,7 @@ def handle_image_description(sender_id, message_attachments, context):
             return
 
     send_message(sender_id, "Please send an image.")
+
 
 def send_message(recipient_id, message_text):
     payload = {
