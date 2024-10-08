@@ -17,7 +17,6 @@ user_context = {}
 @app.route('/webhook', methods=['GET', 'POST'])
 def webhook():
     if request.method == 'GET':
-        # Verification for the webhook
         token = request.args.get('hub.verify_token')
         if token == VERIFY_TOKEN:
             return request.args.get('hub.challenge'), 200
@@ -37,7 +36,6 @@ def handle_message(data):
                 user_message = event['message'].get('text', '')
                 attachments = event['message'].get('attachments', [])
 
-                # Initialize user context if not present
                 if sender_id not in user_context:
                     user_context[sender_id] = {'last_question': None, 'last_answer': None, 'context': [], 'image_description': None}
 
@@ -46,7 +44,6 @@ def handle_message(data):
                 elif user_message.lower() == "describe an image":
                     send_response(sender_id, "Please provide the image URL.")
                 elif attachments:
-                    # Handle image attachments
                     process_image_attachment(sender_id, attachments)
                 else:
                     process_user_request(sender_id, user_message)
@@ -54,7 +51,7 @@ def handle_message(data):
         print(f"Error processing message: {e}")
 
 def process_image_attachment(sender_id, attachments):
-    image_url = attachments[0]['payload']['url']  # Get the URL of the image
+    image_url = attachments[0]['payload']['url']
     model = "meta-llama/Llama-3.2-11B-Vision-Instruct"
     
     response = client.chat_completion(
@@ -68,20 +65,17 @@ def process_image_attachment(sender_id, attachments):
         }],
         max_tokens=500,
     )
+    
     description = response['choices'][0]['message']['content']
     send_response(sender_id, description)
     
-    # Update context with the image description
     user_context[sender_id]['last_answer'] = description
-    user_context[sender_id]['image_description'] = description  # Store the image description for follow-ups
+    user_context[sender_id]['image_description'] = description
 
 def process_user_request(sender_id, content):
     context = user_context[sender_id]
-
-    # Save the content as the last question
     context['last_question'] = content
 
-    # If the last answer was an image description, include it in the context
     if context['image_description']:
         context['context'].append({"question": context['last_question'], "answer": context['image_description']})
 
@@ -93,20 +87,15 @@ def process_user_request(sender_id, content):
                    for ctx in context['context']],
         max_tokens=500,
     )
-    
-    # Add specific follow-up handling for color schemes
-    if "color scheme" in content.lower():
-        follow_up_message = (
-            "To help me identify the color schemes, could you please describe any colors or styles you remember from the image?"
-        )
-        send_response(sender_id, follow_up_message)
-        return
 
     answer = response['choices'][0]['message']['content']
-    context['last_answer'] = answer  # Save the answer to the context
+    context['last_answer'] = answer
     send_response(sender_id, answer)
 
-    # Update user context
+    # Handle specific follow-up questions
+    if "color scheme" in content.lower():
+        send_response(sender_id, "To help me identify the color schemes, could you describe any colors or styles you remember from the image?")
+    
     user_context[sender_id] = context
 
 def send_response(sender_id, message):
@@ -114,9 +103,8 @@ def send_response(sender_id, message):
         print("Invalid sender ID. Cannot send response.")
         return
 
-    # Ensure the message is within the allowed length
     if len(message) > 2000:
-        message = message[:2000]  # Truncate to 2000 characters
+        message = message[:2000]
 
     url = f"https://graph.facebook.com/v11.0/me/messages?access_token={PAGE_ACCESS_TOKEN}"
     payload = {
