@@ -64,8 +64,8 @@ def get_image_description(image_url):
             stream=False,
         )
 
-        if response and response.choices:
-            return response.choices[0].delta.content
+        if response and hasattr(response, 'choices') and len(response.choices) > 0:
+            return response.choices[0].message['content']  # Corrected access to message content
         else:
             print("No choices returned from the model.")
             return "Could not retrieve description."
