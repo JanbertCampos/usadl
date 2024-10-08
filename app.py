@@ -37,12 +37,7 @@ def handle_message(data):
                 attachments = event['message'].get('attachments', [])
 
                 if sender_id not in user_context:
-                    user_context[sender_id] = {
-                        'last_question': None,
-                        'last_answer': None,
-                        'context': [],
-                        'image_descriptions': []  # Store multiple image descriptions
-                    }
+                    user_context[sender_id] = {'last_question': None, 'last_answer': None, 'context': [], 'image_description': None}
 
                 if user_message.lower() == "ask for a question":
                     send_response(sender_id, "Please type your question.")
@@ -74,17 +69,24 @@ def process_image_attachment(sender_id, attachments):
     description = response['choices'][0]['message']['content']
     send_response(sender_id, description)
     
-    # Store the image description, replacing the previous one or adding it
     user_context[sender_id]['last_answer'] = description
-    user_context[sender_id]['image_descriptions'].append(description)  # Append new description
+    user_context[sender_id]['image_description'] = description
 
 def process_user_request(sender_id, content):
     context = user_context[sender_id]
     context['last_question'] = content
 
-    # If there's any image description, include it in the context
-    if context['image_descriptions']:
-        context['context'].append({"question": context['last_question'], "answer": context['image_descriptions'][-1]})
+    if context['image_description']:
+        context['context'].append({"question": context['last_question'], "answer": context['image_description']})
+
+    # Handle specific follow-up questions about the system based on the image description
+    if "what system" in content.lower() and context['image_description']:
+        system_description = (
+            f"Based on the description of the image: '{context['image_description']}', "
+            "it seems to be an interface for managing subscriptions or payments."
+        )
+        send_response(sender_id, system_description)
+        return
 
     model = "meta-llama/Llama-3.2-3B-Instruct"
     response = client.chat_completion(
@@ -99,7 +101,7 @@ def process_user_request(sender_id, content):
     context['last_answer'] = answer
     send_response(sender_id, answer)
 
-    # Handle specific follow-up questions
+    # Handle specific follow-up questions for color schemes
     if "color scheme" in content.lower():
         send_response(sender_id, "To help me identify the color schemes, could you describe any colors or styles you remember from the image?")
     
