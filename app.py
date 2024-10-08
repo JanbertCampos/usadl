@@ -71,6 +71,14 @@ def process_user_request(sender_id, content):
         send_response(sender_id, answer)
 
 def send_response(sender_id, message):
+    if not sender_id:
+        print("Invalid sender ID. Cannot send response.")
+        return
+
+    # Ensure the message is within the allowed length
+    if len(message) > 2000:
+        message = message[:2000]  # Truncate to 2000 characters
+
     url = f"https://graph.facebook.com/v11.0/me/messages?access_token={PAGE_ACCESS_TOKEN}"
     payload = {
         "recipient": {"id": sender_id},
@@ -79,6 +87,6 @@ def send_response(sender_id, message):
     response = requests.post(url, json=payload)
     if response.status_code != 200:
         print(f"Error sending message: {response.status_code} - {response.text}")
-
+        
 if __name__ == '__main__':
     app.run(port=5000)
