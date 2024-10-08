@@ -109,27 +109,32 @@ def handle_image_description(sender_id, message_attachments, context):
 
     send_message(sender_id, "Please send an image.")
 
-def send_message(recipient_id, message_text):
-    """Send a message to the user."""
+def send_message(recipient_id, message_text, retries=3):
+    """Send a message to the user with a retry mechanism."""
     payload = {
         'messaging_type': 'RESPONSE',
         'recipient': {'id': recipient_id},
         'message': {'text': message_text}
     }
-    try:
-        response = requests.post(
-            f'https://graph.facebook.com/v12.0/me/messages?access_token={PAGE_ACCESS_TOKEN}', 
-            json=payload
-        )
-        
-        if response.status_code != 200:
-            error_info = response.json().get("error", {})
-            logger.error(f"Failed to send message to {recipient_id}: {error_info.get('message')}")
-        else:
-            logger.info(f"Message sent successfully to {recipient_id}: {message_text}")
-
-    except requests.exceptions.RequestException as e:
-        logger.error(f"HTTP Request failed: {e}")
+    for _ in range(retries):
+        try:
+            response = requests.post(
+                f'https://graph.facebook.com/v12.0/me/messages?access_token={PAGE_ACCESS_TOKEN}', 
+                json=payload
+            )
+            
+            if response.status_code != 200:
+                error_info = response.json().get("error", {})
+                logger.error(f"Failed to send message to {recipient_id}: {error_info.get('message')}")
+            else:
+                logger.info(f"Message sent successfully to {recipient_id}: {message_text}")
+                return True
+            
+        except requests.exceptions.RequestException as e:
+            logger.error(f"HTTP Request failed: {e}")
+    
+    logger.error(f"Failed to send message to {recipient_id} after {retries} attempts")
+    return False
 
 def send_typing_indicator(recipient_id):
     """Send a typing indicator to the user."""
