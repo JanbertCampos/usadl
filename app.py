@@ -84,9 +84,14 @@ def process_user_request(sender_id, content):
     if context['image_description']:
         context['context'].append({"question": context['last_question'], "answer": context['image_description']})
 
-    # Check if the user is asking about numbers in the last described image
-    if "numbers" in content.lower() and context['image_description']:
-        send_response(sender_id, "I can't see the numbers directly, but based on the description of the last image, it likely includes various numerical figures related to the bills or notices. Could you specify which numbers you're looking for?")
+    # Check for inquiries about the system in the described image
+    if "what do you think that system is" in content.lower() and context['image_description']:
+        system_description = (
+            "Based on the description of the image, it appears to be an account management system for Internet Service Providers (ISPs), "
+            "designed to manage client details such as usernames, contact numbers, and account information. This system is crucial for maintaining "
+            "up-to-date client information to facilitate efficient billing processes."
+        )
+        send_response(sender_id, system_description)
         return
 
     model = "meta-llama/Llama-3.2-3B-Instruct"
