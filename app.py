@@ -11,11 +11,16 @@ PAGE_ACCESS_TOKEN = os.environ.get('PAGE_ACCESS_TOKEN')
 HUGGINGFACES_API_KEY = os.environ.get('HUGGINGFACES_API_KEY')
 VERIFY_TOKEN = os.environ.get('VERIFY_TOKEN', '12345')
 
+# Instructions for the AI
+AI_INSTRUCTIONS = (
+    "You are JanbertGwapo, a helpful a super intelligent in entire universe and also be polite and kind. "
+)
+
+# Dictionary to store user conversations and topics
+user_contexts = {}
+
 # Initialize the Hugging Face API client
 client = InferenceClient(api_key=HUGGINGFACES_API_KEY)
-
-# Dictionary to store user contexts
-user_contexts = {}
 
 @app.route('/webhook', methods=['GET'])
 def verify():
@@ -26,64 +31,34 @@ def verify():
 @app.route('/webhook', methods=['POST'])
 def webhook():
     data = request.get_json()
-    print(f"Incoming data: {data}")  # Debugging line
+    print(f"Incoming data: {data}")
 
-    if 'entry' in data and len(data['entry']) > 0 and 'messaging' in data['entry'][0]:
+    if 'messaging' in data['entry'][0]:
         for event in data['entry'][0]['messaging']:
             sender_id = event['sender']['id']
-            message_text = event.get('message', {}).get('text', None)
-            message_attachments = event.get('message', {}).get('attachments', [])
+            message_text = event.get('message', {}).get('text')
 
-            # Initialize or retrieve user context
-            context = user_contexts.get(sender_id, {'messages': [], 'mode': None})
+            if message_text:
+                print(f"Received message from {sender_id}: {message_text}")
 
-            print(f"Current context for {sender_id}: {context}")  # Debugging line
+                # Retrieve or initialize the conversation context
+                context = user_contexts.get(sender_id, {'messages': []})
+                context['messages'].append(message_text)  # Add the new message to the context
 
-            # Handle "get started" command
-            if message_text and message_text.lower().strip() == "get started":
-                send_message(sender_id, "Please choose an option:\n1. Ask a question\n2. Describe an image")
-                context['mode'] = "choose_option"
-            elif context.get('mode') == "choose_option":
-                handle_option_choice(sender_id, message_text, context)
-            elif context.get('mode') == "ask_question" and message_text:
-                handle_question(sender_id, message_text, context)
-            elif context.get('mode') == "describe_image":
-                handle_image_description(sender_id, message_attachments, context)
-            else:
-                send_message(sender_id, "Please type 'get started' to see options.")
+                # Send typing indicator
+                send_typing_indicator(sender_id)
 
-            user_contexts[sender_id] = context  # Update user context
+                # Get response from Hugging Face model
+                response_text = get_huggingface_response(context)
+                print(f"Full response: {response_text}")
+
+                # Send the response back to the user
+                send_message(sender_id, response_text)
+
+                # Store updated context
+                user_contexts[sender_id] = context
 
     return 'OK', 200
-
-def handle_option_choice(sender_id, message_text, context):
-    if message_text.strip() == "1":
-        context['mode'] = "ask_question"
-        send_message(sender_id, "You can now ask your question.")
-    elif message_text.strip() == "2":
-        context['mode'] = "describe_image"
-        send_message(sender_id, "Please send an image.")
-    else:
-        send_message(sender_id, "Invalid option. Please type 'get started' to see options again.")
-
-def handle_question(sender_id, message_text, context):
-    context['messages'].append(message_text)
-    send_typing_indicator(sender_id)
-    response_text = get_huggingface_response(context, question=True)
-    send_message(sender_id, response_text)
-
-def handle_image_description(sender_id, message_attachments, context):
-    if message_attachments:
-        for attachment in message_attachments:
-            if attachment['type'] == 'image':
-                image_url = attachment['payload']['url']
-                context['messages'].append(image_url)  # Store the image URL
-                send_typing_indicator(sender_id)
-                response_text = get_huggingface_response(context, question=False, image_url=image_url)
-                send_message(sender_id, response_text)
-                break  # Exit after processing the first image
-    else:
-        send_message(sender_id, "Please send an image.")
 
 def send_message(recipient_id, message_text):
     payload = {
@@ -103,44 +78,30 @@ def send_typing_indicator(recipient_id):
         'sender_action': 'typing_on'
     }
     requests.post(f'https://graph.facebook.com/v12.0/me/messages?access_token={PAGE_ACCESS_TOKEN}', json=payload)
-    time.sleep(1)
+    time.sleep(1)  # Simulate typing delay (optional)
 
-def get_huggingface_response(context, question=True, image_url=None):
-    if question:
-        user_messages = context['messages'][-10:]  # Get the last N messages
-        messages = [{"role": "user", "content": msg} for msg in user_messages]
-        
+def get_huggingface_response(context):
+    # Get the last N messagses for context
+    user_messages = context['messages'][-10:]  # Adjust the number as needed
+    messages = [{"role": "user", "content": msg} for msg in user_messages]
+
+    try:
         response = client.chat_completion(
             model="meta-llama/Llama-3.2-3B-Instruct",
             messages=messages,
             max_tokens=500,
             stream=False
         )
-        
-        text = response.choices[0].message['content'] if response.choices else ""
-        return text or "I'm sorry, I couldn't generate a response."
-    
-    if image_url:
-        messages = [
-            {"role": "user", "content": [
-                {"type": "image_url", "image_url": {"url": image_url}},
-                {"type": "text", "text": "Describe this image in one sentence."}
-            ]}
-        ]
-        
-        response = client.chat_completion(
-            model="meta-llama/Llama-3.2-11B-Vision-Instruct",
-            messages=messages,
-            max_tokens=500,
-            stream=True,
-        )
-        
-        text = ""
-        for message in response:
-            text += message.choices[0].delta.content
-        return text or "I'm sorry, I couldn't describe the image."
-    
-    return "Invalid request."
 
+        text = response.choices[0].message['content'] if response.choices else ""
+
+        if not text:
+            return "I'm sorry, I couldn't generate a response. Can you please ask something else?"
+
+        return text
+    except Exception as e:
+        print(f"Error getting response from Hugging Face: {e}")
+        return "Sorry, I'm having trouble responding right now."
+        
 if __name__ == '__main__':
     app.run(port=5000, debug=True)
