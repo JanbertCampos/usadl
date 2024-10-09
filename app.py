@@ -57,7 +57,7 @@ def handle_message(data):
                         context['authenticated'] = True
                         send_response(sender_id, "Access granted! You can now use the commands: 'ask for a question' and 'describe an image'.")
                     else:
-                        send_response(sender_id, "LOL try again bobo hahahaha")
+                        send_response(sender_id, "bobo incorrect passcode please try again")
                 else:
                     # Handle commands after authentication
                     if user_message.lower() == "ask for a question":
