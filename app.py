@@ -73,15 +73,7 @@ def handle_message(data):
 
 
 def process_image_attachment(sender_id, attachments):
-    if not attachments:
-        send_response(sender_id, "No attachments found.")
-        return
-    
-    image_url = attachments[0]['payload'].get('url')
-    if not image_url:
-        send_response(sender_id, "Invalid image URL.")
-        return
-
+    image_url = attachments[0]['payload']['url']
     model = "meta-llama/Llama-3.2-11B-Vision-Instruct"
     
     response = client.chat_completion(
@@ -99,17 +91,29 @@ def process_image_attachment(sender_id, attachments):
     if response and 'choices' in response:
         description = response['choices'][0]['message']['content']
         send_response(sender_id, description)
+        
+        # Store description and keywords
         user_context[sender_id]['last_answer'] = description
         user_context[sender_id]['image_description'] = description
-    else:
-        send_response(sender_id, "Failed to describe the image.")
+        user_context[sender_id]['image_data'] = {'url': image_url, 'description': description}
+        user_context[sender_id]['image_keywords'] = ['phpMyAdmin', 'error']  # Add relevant keywords
+
 
 
 def process_user_request(sender_id, content):
     context = user_context[sender_id]
     context['last_question'] = content
 
-    # Save the current question in the context
+    # Check for follow-up questions related to the image
+    if context['image_data'] and ("solve" in content.lower() or "errors" in content.lower()):
+        keywords = context.get('image_keywords', [])
+        if any(keyword in content.lower() for keyword in keywords):
+            send_response(sender_id, "It looks like you are asking about resolving phpMyAdmin errors. Common solutions include checking database connection settings or reviewing the configuration file for any issues.")
+            return
+        else:
+            send_response(sender_id, "I'm not sure how to address that specific error. Could you provide more context or details?")
+
+    # Log the current question
     context['context'].append({"question": content, "answer": None})
 
     # Prepare previous interactions
@@ -117,10 +121,6 @@ def process_user_request(sender_id, content):
         {"role": "system", "content": f"Previous interactions: {ctx['question']} -> {ctx['answer']}"}
         for ctx in context['context'] if 'question' in ctx and 'answer' in ctx
     ]
-
-    # Check for specific keywords to handle common questions
-    if "who killed magellan" in content.lower():
-        content = "Who killed Magellan?"
 
     response = client.chat_completion(
         model="meta-llama/Llama-3.2-3B-Instruct",
@@ -132,14 +132,15 @@ def process_user_request(sender_id, content):
         answer = response['choices'][0]['message']['content']
         if answer.strip():
             context['last_answer'] = answer
-            context['context'][-1]['answer'] = answer  # Update the last question's answer
+            context['context'][-1]['answer'] = answer
             send_response(sender_id, answer)
         else:
-            send_response(sender_id, "I couldn't find an answer to that. Can you try asking something else?")
+            send_response(sender_id, "I couldn't find an answer to that. Can you ask something else?")
     else:
-        send_response(sender_id, "There was an error processing your request.")
+        send_response(sender_id, "There was an error processing your request. Can you please rephrase your question?")
 
     user_context[sender_id] = context
+
 
 
 def send_response(sender_id, message):
