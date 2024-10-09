@@ -112,15 +112,15 @@ def process_user_request(sender_id, content):
     context['last_question'] = content
 
     # Check if the user is asking about the last image
-    if context.get('image_data') and ("solution" in content.lower() or "error" in content.lower()):
+    if context.get('image_data'):
         description = context['image_data']['description']
-        send_response(sender_id, f"You asked about the image described as: '{description}'. Can you specify your question further?")
+        # Simply acknowledge the image description and ask for clarification
+        send_response(sender_id, "I have the image description. What would you like to know about it?")
         return
 
     # Save the current question in the context
     context['context'].append({"question": content, "answer": None})
 
-    # Prepare previous interactions
     previous_interactions = [
         {"role": "system", "content": f"Previous interactions: {ctx['question']} -> {ctx['answer']}"}
         for ctx in context['context'] if 'question' in ctx and 'answer' in ctx
@@ -144,6 +144,7 @@ def process_user_request(sender_id, content):
         send_response(sender_id, "There was an error processing your request.")
 
     user_context[sender_id] = context
+
 
 def send_response(sender_id, message):
     if not sender_id:
