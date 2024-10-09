@@ -45,8 +45,8 @@ def handle_message(data):
                         'last_answer': None,
                         'context': [],
                         'image_description': None,
-                        'image_data': None,
-                        'authenticated': False
+                        'authenticated': False,
+                        'mode': None  # Track current mode
                     }
                     send_response(sender_id, "Welcome! Please enter the passcode.")
 
@@ -62,26 +62,20 @@ def handle_message(data):
                 else:
                     # Handle commands after authentication
                     if user_message.lower() == "ask for a question":
+                        context['mode'] = 'ask'
                         send_response(sender_id, "Please type your question.")
                     elif user_message.lower() == "describe an image":
+                        context['mode'] = 'describe'
                         send_response(sender_id, "Please send an image.")
-                    elif attachments:
+                    elif attachments and context['mode'] == 'describe':
                         process_image_attachment(sender_id, attachments)
-                    else:
+                    elif context['mode'] == 'ask':
                         process_user_request(sender_id, user_message)
     except Exception as e:
         print(f"Error processing message: {e}")
 
 def process_image_attachment(sender_id, attachments):
-    if not attachments:
-        send_response(sender_id, "No attachments found.")
-        return
-    
-    image_url = attachments[0]['payload'].get('url')
-    if not image_url:
-        send_response(sender_id, "Invalid image URL.")
-        return
-
+    image_url = attachments[0]['payload']['url']  # Get the URL of the image
     model = "meta-llama/Llama-3.2-11B-Vision-Instruct"
     
     response = client.chat_completion(
@@ -95,15 +89,13 @@ def process_image_attachment(sender_id, attachments):
         }],
         max_tokens=500,
     )
-
     if response and 'choices' in response:
         description = response['choices'][0]['message']['content']
         send_response(sender_id, description)
         
-        # Store the image data and description in user context
+        # Update context with the image description
         user_context[sender_id]['last_answer'] = description
-        user_context[sender_id]['image_description'] = description
-        user_context[sender_id]['image_data'] = {'url': image_url, 'description': description}
+        user_context[sender_id]['image_description'] = description  # Store the image description for follow-ups
     else:
         send_response(sender_id, "Failed to describe the image.")
 
@@ -111,38 +103,36 @@ def process_user_request(sender_id, content):
     context = user_context[sender_id]
     context['last_question'] = content
 
-    # Check if the user is asking about the last image
-    if context.get('image_data'):
-        send_response(sender_id, "What specific information would you like to know about the image?")
-        return
+    if context['image_description']:
+        context['context'].append({
+            "question": context['last_question'], 
+            "answer": context['image_description']
+        })
 
-    # Save the current question in the context
-    context['context'].append({"question": content, "answer": None})
-
+    model = "meta-llama/Llama-3.2-3B-Instruct"
     previous_interactions = [
         {"role": "system", "content": f"Previous interactions: {ctx['question']} -> {ctx['answer']}"}
         for ctx in context['context'] if 'question' in ctx and 'answer' in ctx
     ]
 
     response = client.chat_completion(
-        model="meta-llama/Llama-3.2-3B-Instruct",
+        model=model,
         messages=[{"role": "user", "content": content}] + previous_interactions,
         max_tokens=500,
     )
-
+    
     if response and 'choices' in response:
         answer = response['choices'][0]['message']['content']
-        if answer.strip():
-            context['last_answer'] = answer
-            context['context'][-1]['answer'] = answer  # Update the last question's answer
-            send_response(sender_id, answer)
+        # Check for response quality
+        if "he" in answer or not answer.strip():  # Simple heuristic
+            send_response(sender_id, "I didn't quite catch that. Could you please clarify your question?")
         else:
-            send_response(sender_id, "I couldn't find an answer to that. Can you try asking something else?")
+            context['last_answer'] = answer
+            send_response(sender_id, answer)
     else:
-        send_response(sender_id, "There was an error processing your request.")
+        send_response(sender_id, "I had trouble processing that. Could you try asking in a different way?")
 
     user_context[sender_id] = context
-
 
 def send_response(sender_id, message):
     if not sender_id:
