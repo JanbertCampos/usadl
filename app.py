@@ -13,6 +13,7 @@ client = InferenceClient(api_key=HUGGINGFACES_API_KEY)
 
 # Dictionary to hold user contexts
 user_context = {}
+passcode = "babyko"
 
 @app.route('/webhook', methods=['GET', 'POST'])
 def webhook():
@@ -39,17 +40,34 @@ def handle_message(data):
 
                 # Initialize user context if not present
                 if sender_id not in user_context:
-                    user_context[sender_id] = {'last_question': None, 'last_answer': None, 'context': [], 'image_description': None}
+                    user_context[sender_id] = {
+                        'last_question': None,
+                        'last_answer': None,
+                        'context': [],
+                        'image_description': None,
+                        'authenticated': False  # Track authentication status
+                    }
 
-                if user_message.lower() == "ask for a question":
-                    send_response(sender_id, "Please type your question.")
-                elif user_message.lower() == "describe an image":
-                    send_response(sender_id, "Please sent an image.")
-                elif attachments:
-                    # Handle image attachments
-                    process_image_attachment(sender_id, attachments)
+                context = user_context[sender_id]
+
+                # Passcode check
+                if not context['authenticated']:
+                    if user_message.lower() == passcode:
+                        context['authenticated'] = True
+                        send_response(sender_id, "Access granted! You can now use the commands: 'ask for a question' and 'describe an image'.")
+                    else:
+                        send_response(sender_id, "LOL try again")
                 else:
-                    process_user_request(sender_id, user_message)
+                    # Handle commands after authentication
+                    if user_message.lower() == "ask for a question":
+                        send_response(sender_id, "Please type your question.")
+                    elif user_message.lower() == "describe an image":
+                        send_response(sender_id, "Please send an image.")
+                    elif attachments:
+                        # Handle image attachments
+                        process_image_attachment(sender_id, attachments)
+                    else:
+                        process_user_request(sender_id, user_message)
     except Exception as e:
         print(f"Error processing message: {e}")
 
