@@ -104,14 +104,14 @@ def process_user_request(sender_id, content):
     context = user_context[sender_id]
     context['last_question'] = content
 
-    # Check for follow-up questions related to the image
-    if context['image_data'] and ("solve" in content.lower() or "errors" in content.lower()):
-        keywords = context.get('image_keywords', [])
-        if any(keyword in content.lower() for keyword in keywords):
-            send_response(sender_id, "It looks like you are asking about resolving phpMyAdmin errors. Common solutions include checking database connection settings or reviewing the configuration file for any issues.")
+    # Check if the user is asking for solutions related to the last image
+    if context['image_data'] and ("solution" in content.lower() or "fix" in content.lower() or "error" in content.lower()):
+        description = context['image_data']['description']
+        if "1045" in description:  # Example keyword from the image description
+            send_response(sender_id, "The error 1045 indicates incorrect MySQL credentials. Possible solutions include: 1. Checking your MySQL username and password. 2. Ensuring that the user has the proper privileges. 3. Reviewing your MySQL configuration settings.")
             return
         else:
-            send_response(sender_id, "I'm not sure how to address that specific error. Could you provide more context or details?")
+            send_response(sender_id, "I'm not sure how to address that specific issue. Could you provide more context or details?")
 
     # Log the current question
     context['context'].append({"question": content, "answer": None})
@@ -140,7 +140,6 @@ def process_user_request(sender_id, content):
         send_response(sender_id, "There was an error processing your request. Can you please rephrase your question?")
 
     user_context[sender_id] = context
-
 
 
 def send_response(sender_id, message):
