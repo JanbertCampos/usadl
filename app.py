@@ -109,36 +109,38 @@ def process_user_request(sender_id, content):
     context = user_context[sender_id]
     context['last_question'] = content
 
-    if context['image_description']:
-        context['context'].append({
-            "question": context['last_question'], 
-            "answer": context['image_description']
-        })
+    # Save the current question in the context
+    context['context'].append({"question": content, "answer": None})
 
-    model = "meta-llama/Llama-3.2-3B-Instruct"
+    # Prepare previous interactions
     previous_interactions = [
         {"role": "system", "content": f"Previous interactions: {ctx['question']} -> {ctx['answer']}"}
         for ctx in context['context'] if 'question' in ctx and 'answer' in ctx
     ]
 
+    # Check for specific keywords to handle common questions
+    if "who killed magellan" in content.lower():
+        content = "Who killed Magellan?"
+
     response = client.chat_completion(
-        model=model,
+        model="meta-llama/Llama-3.2-3B-Instruct",
         messages=[{"role": "user", "content": content}] + previous_interactions,
         max_tokens=500,
     )
-    
+
     if response and 'choices' in response:
         answer = response['choices'][0]['message']['content']
-        # Check for response quality
-        if "he" in answer or not answer.strip():  # Simple heuristic
-            send_response(sender_id, "I didn't quite catch that. Could you please clarify your question?")
-        else:
+        if answer.strip():
             context['last_answer'] = answer
+            context['context'][-1]['answer'] = answer  # Update the last question's answer
             send_response(sender_id, answer)
+        else:
+            send_response(sender_id, "I couldn't find an answer to that. Can you try asking something else?")
     else:
-        send_response(sender_id, "I had trouble processing that. Could you try asking in a different way?")
+        send_response(sender_id, "There was an error processing your request.")
 
     user_context[sender_id] = context
+
 
 def send_response(sender_id, message):
     if not sender_id:
