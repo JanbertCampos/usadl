@@ -113,9 +113,7 @@ def process_user_request(sender_id, content):
 
     # Check if the user is asking about the last image
     if context.get('image_data'):
-        description = context['image_data']['description']
-        # Simply acknowledge the image description and ask for clarification
-        send_response(sender_id, "I have the image description. What would you like to know about it?")
+        send_response(sender_id, "What specific information would you like to know about the image?")
         return
 
     # Save the current question in the context
