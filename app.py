@@ -13,12 +13,10 @@ client = InferenceClient(api_key=HUGGINGFACES_API_KEY)
 
 # Dictionary to hold user contexts
 user_context = {}
-passcode = "babyko"
 
 @app.route('/webhook', methods=['GET', 'POST'])
 def webhook():
     if request.method == 'GET':
-        # Verification for the webhook
         token = request.args.get('hub.verify_token')
         if token == VERIFY_TOKEN:
             return request.args.get('hub.challenge'), 200
@@ -38,44 +36,22 @@ def handle_message(data):
                 user_message = event['message'].get('text', '')
                 attachments = event['message'].get('attachments', [])
 
-                # Initialize user context if not present
                 if sender_id not in user_context:
-                    user_context[sender_id] = {
-                        'last_question': None,
-                        'last_answer': None,
-                        'context': [],
-                        'image_description': None,
-                        'authenticated': False,
-                        'mode': None  # Track current mode
-                    }
-                    send_response(sender_id, "Welcome! Please enter the passcode.")
+                    user_context[sender_id] = {'last_question': None, 'last_answer': None, 'context': [], 'image_description': None}
 
-                context = user_context[sender_id]
-
-                # Passcode check
-                if not context['authenticated']:
-                    if user_message.lower() == passcode:
-                        context['authenticated'] = True
-                        send_response(sender_id, "Access granted! You can now use the commands: 'ask for a question' and 'describe an image'.")
-                    else:
-                        send_response(sender_id, "bobo incorrect passcode please try again")
+                if user_message.lower() == "ask for a question":
+                    send_response(sender_id, "Please type your question.")
+                elif user_message.lower() == "describe an image":
+                    send_response(sender_id, "Please Send an image")
+                elif attachments:
+                    process_image_attachment(sender_id, attachments)
                 else:
-                    # Handle commands after authentication
-                    if user_message.lower() == "ask for a question":
-                        context['mode'] = 'ask'
-                        send_response(sender_id, "Please type your question.")
-                    elif user_message.lower() == "describe an image":
-                        context['mode'] = 'describe'
-                        send_response(sender_id, "Please send an image.")
-                    elif attachments and context['mode'] == 'describe':
-                        process_image_attachment(sender_id, attachments)
-                    elif context['mode'] == 'ask':
-                        process_user_request(sender_id, user_message)
+                    process_user_request(sender_id, user_message)
     except Exception as e:
         print(f"Error processing message: {e}")
 
 def process_image_attachment(sender_id, attachments):
-    image_url = attachments[0]['payload']['url']  # Get the URL of the image
+    image_url = attachments[0]['payload']['url']
     model = "meta-llama/Llama-3.2-11B-Vision-Instruct"
     
     response = client.chat_completion(
@@ -90,52 +66,45 @@ def process_image_attachment(sender_id, attachments):
         max_tokens=500,
     )
     
-    if response and 'choices' in response:
-        description = response['choices'][0]['message']['content']
-        send_response(sender_id, description)
-        
-        # Store the image description for follow-ups
-        user_context[sender_id]['image_description'] = description
+    description = response['choices'][0]['message']['content']
+    send_response(sender_id, description)
+    
+    user_context[sender_id]['last_answer'] = description
+    user_context[sender_id]['image_description'] = description
 
 def process_user_request(sender_id, content):
     context = user_context[sender_id]
     context['last_question'] = content
 
-    # Include the image description in the context if available
     if context['image_description']:
-        previous_interactions = [
-            {"role": "system", "content": f"Image description: {context['image_description']}"},
-            {"role": "user", "content": context['last_question']}
-        ]
-    else:
-        previous_interactions = [{"role": "user", "content": context['last_question']}]
+        context['context'].append({"question": context['last_question'], "answer": context['image_description']})
 
+    model = "meta-llama/Llama-3.2-3B-Instruct"
     response = client.chat_completion(
-        model="meta-llama/Llama-3.2-3B-Instruct",
-        messages=previous_interactions + [{"role": "user", "content": content}],
+        model=model,
+        messages=[{"role": "user", "content": content}] + 
+                  [{"role": "system", "content": f"Previous interactions: {ctx['question']} -> {ctx['answer']}"}
+                   for ctx in context['context']],
         max_tokens=500,
     )
+
+    answer = response['choices'][0]['message']['content']
+    context['last_answer'] = answer
+    send_response(sender_id, answer)
+
+    # Handle specific follow-up questions
+    if "color scheme" in content.lower():
+        send_response(sender_id, "To help me identify the color schemes, could you describe any colors or styles you remember from the image?")
     
-    if response and 'choices' in response:
-        answer = response['choices'][0]['message']['content']
-        if answer.strip():
-            send_response(sender_id, answer)
-        else:
-            send_response(sender_id, "I couldn't find an answer to that. Can you ask something else?")
-    else:
-        send_response(sender_id, "There was an error processing your request.")
-
     user_context[sender_id] = context
-
 
 def send_response(sender_id, message):
     if not sender_id:
         print("Invalid sender ID. Cannot send response.")
         return
 
-    # Ensure the message is within the allowed length
     if len(message) > 2000:
-        message = message[:2000]  # Truncate to 2000 characters
+        message = message[:2000]
 
     url = f"https://graph.facebook.com/v11.0/me/messages?access_token={PAGE_ACCESS_TOKEN}"
     payload = {
