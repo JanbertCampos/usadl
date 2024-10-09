@@ -45,8 +45,9 @@ def handle_message(data):
                         'last_answer': None,
                         'context': [],
                         'image_description': None,
-                        'authenticated': False  # Track authentication status
+                        'authenticated': False
                     }
+                    send_response(sender_id, "Welcome! Please enter the passcode.")
 
                 context = user_context[sender_id]
 
@@ -56,7 +57,7 @@ def handle_message(data):
                         context['authenticated'] = True
                         send_response(sender_id, "Access granted! You can now use the commands: 'ask for a question' and 'describe an image'.")
                     else:
-                        send_response(sender_id, "LOL try again")
+                        send_response(sender_id, "LOL try again bobo hahahaha")
                 else:
                     # Handle commands after authentication
                     if user_message.lower() == "ask for a question":
@@ -64,12 +65,12 @@ def handle_message(data):
                     elif user_message.lower() == "describe an image":
                         send_response(sender_id, "Please send an image.")
                     elif attachments:
-                        # Handle image attachments
                         process_image_attachment(sender_id, attachments)
                     else:
                         process_user_request(sender_id, user_message)
     except Exception as e:
         print(f"Error processing message: {e}")
+
 
 def process_image_attachment(sender_id, attachments):
     image_url = attachments[0]['payload']['url']  # Get the URL of the image
