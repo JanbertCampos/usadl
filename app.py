@@ -89,50 +89,44 @@ def process_image_attachment(sender_id, attachments):
         }],
         max_tokens=500,
     )
+    
     if response and 'choices' in response:
         description = response['choices'][0]['message']['content']
         send_response(sender_id, description)
         
-        # Update context with the image description
-        user_context[sender_id]['last_answer'] = description
-        user_context[sender_id]['image_description'] = description  # Store the image description for follow-ups
-    else:
-        send_response(sender_id, "Failed to describe the image.")
+        # Store the image description for follow-ups
+        user_context[sender_id]['image_description'] = description
 
 def process_user_request(sender_id, content):
     context = user_context[sender_id]
     context['last_question'] = content
 
+    # Include the image description in the context if available
     if context['image_description']:
-        context['context'].append({
-            "question": context['last_question'], 
-            "answer": context['image_description']
-        })
-
-    model = "meta-llama/Llama-3.2-3B-Instruct"
-    previous_interactions = [
-        {"role": "system", "content": f"Previous interactions: {ctx['question']} -> {ctx['answer']}"}
-        for ctx in context['context'] if 'question' in ctx and 'answer' in ctx
-    ]
+        previous_interactions = [
+            {"role": "system", "content": f"Image description: {context['image_description']}"},
+            {"role": "user", "content": context['last_question']}
+        ]
+    else:
+        previous_interactions = [{"role": "user", "content": context['last_question']}]
 
     response = client.chat_completion(
-        model=model,
-        messages=[{"role": "user", "content": content}] + previous_interactions,
+        model="meta-llama/Llama-3.2-3B-Instruct",
+        messages=previous_interactions + [{"role": "user", "content": content}],
         max_tokens=500,
     )
     
     if response and 'choices' in response:
         answer = response['choices'][0]['message']['content']
-        # Check for response quality
-        if "he" in answer or not answer.strip():  # Simple heuristic
-            send_response(sender_id, "I didn't quite catch that. Could you please clarify your question?")
-        else:
-            context['last_answer'] = answer
+        if answer.strip():
             send_response(sender_id, answer)
+        else:
+            send_response(sender_id, "I couldn't find an answer to that. Can you ask something else?")
     else:
-        send_response(sender_id, "I had trouble processing that. Could you try asking in a different way?")
+        send_response(sender_id, "There was an error processing your request.")
 
     user_context[sender_id] = context
+
 
 def send_response(sender_id, message):
     if not sender_id:
