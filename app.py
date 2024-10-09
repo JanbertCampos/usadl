@@ -73,7 +73,15 @@ def handle_message(data):
 
 
 def process_image_attachment(sender_id, attachments):
-    image_url = attachments[0]['payload']['url']  # Get the URL of the image
+    if not attachments:
+        send_response(sender_id, "No attachments found.")
+        return
+    
+    image_url = attachments[0]['payload'].get('url')
+    if not image_url:
+        send_response(sender_id, "Invalid image URL.")
+        return
+
     model = "meta-llama/Llama-3.2-11B-Vision-Instruct"
     
     response = client.chat_completion(
@@ -87,37 +95,49 @@ def process_image_attachment(sender_id, attachments):
         }],
         max_tokens=500,
     )
-    description = response['choices'][0]['message']['content']
-    send_response(sender_id, description)
-    
-    # Update context with the image description
-    user_context[sender_id]['last_answer'] = description
-    user_context[sender_id]['image_description'] = description  # Store the image description for follow-ups
+
+    if response and 'choices' in response:
+        description = response['choices'][0]['message']['content']
+        send_response(sender_id, description)
+        user_context[sender_id]['last_answer'] = description
+        user_context[sender_id]['image_description'] = description
+    else:
+        send_response(sender_id, "Failed to describe the image.")
+
 
 def process_user_request(sender_id, content):
     context = user_context[sender_id]
-
-    # Save the content as the last question
     context['last_question'] = content
 
-    # If the last answer was an image description, include it in the context
     if context['image_description']:
-        context['context'].append({"question": context['last_question'], "answer": context['image_description']})
+        context['context'].append({
+            "question": context['last_question'], 
+            "answer": context['image_description']
+        })
 
     model = "meta-llama/Llama-3.2-3B-Instruct"
+    previous_interactions = [
+        {"role": "system", "content": f"Previous interactions: {ctx['question']} -> {ctx['answer']}"}
+        for ctx in context['context'] if 'question' in ctx and 'answer' in ctx
+    ]
+
     response = client.chat_completion(
         model=model,
-        messages=[{"role": "user", "content": content}] + 
-                  [{"role": "system", "content": f"Previous interactions: {ctx['question']} -> {ctx['answer']}"}
-                   for ctx in context['context']],
+        messages=[{"role": "user", "content": content}] + previous_interactions,
         max_tokens=500,
     )
     
-    answer = response['choices'][0]['message']['content']
-    context['last_answer'] = answer  # Save the answer to the context
-    send_response(sender_id, answer)
+    if response and 'choices' in response:
+        answer = response['choices'][0]['message']['content']
+        # Check for response quality
+        if "he" in answer or not answer.strip():  # Simple heuristic
+            send_response(sender_id, "I didn't quite catch that. Could you please clarify your question?")
+        else:
+            context['last_answer'] = answer
+            send_response(sender_id, answer)
+    else:
+        send_response(sender_id, "I had trouble processing that. Could you try asking in a different way?")
 
-    # Update user context
     user_context[sender_id] = context
 
 def send_response(sender_id, message):
