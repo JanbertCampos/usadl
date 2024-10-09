@@ -45,6 +45,7 @@ def handle_message(data):
                         'last_answer': None,
                         'context': [],
                         'image_description': None,
+                        'image_data': None,
                         'authenticated': False
                     }
                     send_response(sender_id, "Welcome! Please enter the passcode.")
@@ -71,9 +72,16 @@ def handle_message(data):
     except Exception as e:
         print(f"Error processing message: {e}")
 
-
 def process_image_attachment(sender_id, attachments):
-    image_url = attachments[0]['payload']['url']
+    if not attachments:
+        send_response(sender_id, "No attachments found.")
+        return
+    
+    image_url = attachments[0]['payload'].get('url')
+    if not image_url:
+        send_response(sender_id, "Invalid image URL.")
+        return
+
     model = "meta-llama/Llama-3.2-11B-Vision-Instruct"
     
     response = client.chat_completion(
@@ -92,28 +100,24 @@ def process_image_attachment(sender_id, attachments):
         description = response['choices'][0]['message']['content']
         send_response(sender_id, description)
         
-        # Store description and keywords
+        # Store the image data and description in user context
         user_context[sender_id]['last_answer'] = description
         user_context[sender_id]['image_description'] = description
         user_context[sender_id]['image_data'] = {'url': image_url, 'description': description}
-        user_context[sender_id]['image_keywords'] = ['phpMyAdmin', 'error']  # Add relevant keywords
-
-
+    else:
+        send_response(sender_id, "Failed to describe the image.")
 
 def process_user_request(sender_id, content):
     context = user_context[sender_id]
     context['last_question'] = content
 
-    # Check if the user is asking for solutions related to the last image
-    if context['image_data'] and ("solution" in content.lower() or "fix" in content.lower() or "error" in content.lower()):
+    # Check if the user is asking about the last image
+    if context.get('image_data') and ("solution" in content.lower() or "error" in content.lower()):
         description = context['image_data']['description']
-        if "1045" in description:  # Example keyword from the image description
-            send_response(sender_id, "The error 1045 indicates incorrect MySQL credentials. Possible solutions include: 1. Checking your MySQL username and password. 2. Ensuring that the user has the proper privileges. 3. Reviewing your MySQL configuration settings.")
-            return
-        else:
-            send_response(sender_id, "I'm not sure how to address that specific issue. Could you provide more context or details?")
+        send_response(sender_id, f"You asked about the image described as: '{description}'. Can you specify your question further?")
+        return
 
-    # Log the current question
+    # Save the current question in the context
     context['context'].append({"question": content, "answer": None})
 
     # Prepare previous interactions
@@ -132,15 +136,14 @@ def process_user_request(sender_id, content):
         answer = response['choices'][0]['message']['content']
         if answer.strip():
             context['last_answer'] = answer
-            context['context'][-1]['answer'] = answer
+            context['context'][-1]['answer'] = answer  # Update the last question's answer
             send_response(sender_id, answer)
         else:
-            send_response(sender_id, "I couldn't find an answer to that. Can you ask something else?")
+            send_response(sender_id, "I couldn't find an answer to that. Can you try asking something else?")
     else:
-        send_response(sender_id, "There was an error processing your request. Can you please rephrase your question?")
+        send_response(sender_id, "There was an error processing your request.")
 
     user_context[sender_id] = context
-
 
 def send_response(sender_id, message):
     if not sender_id:
@@ -162,5 +165,3 @@ def send_response(sender_id, message):
 
 if __name__ == '__main__':
     app.run(port=5000)
-
-
