@@ -65,9 +65,9 @@ def describe_image(image_url):
             stream=False,
         )
 
-        # Check if the response contains choices
-        if hasattr(response, 'choices') and response.choices:
-            return response.choices[0].delta.content
+        # Accessing the generated content directly
+        if response.choices and len(response.choices) > 0:
+            return response.choices[0].message['content']  # Updated line
         else:
             return "No description could be generated."
 
