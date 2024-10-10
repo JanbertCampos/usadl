@@ -50,7 +50,7 @@ def describe_image(image_url):
         return "Invalid image URL."
 
     try:
-        for message in client.chat_completion(
+        response = client.chat_completion(
             model="meta-llama/Llama-3.2-11B-Vision-Instruct",
             messages=[
                 {
@@ -63,10 +63,17 @@ def describe_image(image_url):
             ],
             max_tokens=500,
             stream=False,
-        ):
-            return message.choices[0].delta.content
+        )
+
+        # Check if the response contains choices
+        if hasattr(response, 'choices') and response.choices:
+            return response.choices[0].delta.content
+        else:
+            return "No description could be generated."
+
     except Exception as e:
         return f"Error processing image: {str(e)}"
+
 
 def send_message(recipient_id, message_text):
     url = f'https://graph.facebook.com/v12.0/me/messages?access_token={PAGE_ACCESS_TOKEN}'
