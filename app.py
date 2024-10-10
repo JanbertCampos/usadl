@@ -53,7 +53,7 @@ def handle_message(data):
 
 def handle_query(query, description):
     if "color" in query.lower():
-        # Simple check for colors mentioned in the description
+        # Simple check for colors mentioned in the descriptions
         # You can improve this logic based on your needs
         return "The description does not include specific color details. Please provide the image for color analysis."
     return "I'm not sure how to respond to that."
