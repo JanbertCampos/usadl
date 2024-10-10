@@ -1,6 +1,7 @@
 from flask import Flask, request, jsonify
 import os
 import requests
+import re
 from huggingface_hub import InferenceClient
 
 app = Flask(__name__)
@@ -19,7 +20,7 @@ user_context = {}
 @app.route('/webhook', methods=['GET', 'POST'])
 def webhook():
     if request.method == 'GET':
-        # Verify the token for webhook
+        # Verify the token for the webhook
         if request.args.get('hub.verify_token') == VERIFY_TOKEN:
             return request.args.get('hub.challenge'), 200
         return 'Unauthorized', 403
@@ -40,28 +41,37 @@ def handle_message(data):
         if image_url:
             response = describe_image(image_url)
             send_message(sender_id, response)
+        else:
+            send_message(sender_id, "No valid image URL found in your message.")
 
 def extract_image_url(message_text):
-    # Logic to extract image URL from the message text
-    # Here you can implement your own parsing logic
-    return message_text  # Placeholder: replace with actual extraction logic
+    # Simple regex to extract URLs from the message text
+    url_pattern = r'https?://[^\s]+'
+    match = re.search(url_pattern, message_text)
+    return match.group(0) if match else None
 
 def describe_image(image_url):
-    for message in client.chat_completion(
-        model="meta-llama/Llama-3.2-11B-Vision-Instruct",
-        messages=[
-            {
-                "role": "user",
-                "content": [
-                    {"type": "image_url", "image_url": {"url": image_url}},
-                    {"type": "text", "text": "Describe this image in one sentence."},
-                ],
-            }
-        ],
-        max_tokens=500,
-        stream=False,  # Set to False to get the full response at once
-    ):
-        return message.choices[0].delta.content
+    if not image_url.startswith(('http://', 'https://')):
+        return "Invalid image URL."
+
+    try:
+        for message in client.chat_completion(
+            model="meta-llama/Llama-3.2-11B-Vision-Instruct",
+            messages=[
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "image_url", "image_url": {"url": image_url}},
+                        {"type": "text", "text": "Describe this image in one sentence."},
+                    ],
+                }
+            ],
+            max_tokens=500,
+            stream=False,  # Set to False to get the full response at once
+        ):
+            return message.choices[0].delta.content
+    except Exception as e:
+        return f"Error processing image: {str(e)}"
 
 def send_message(recipient_id, message_text):
     url = f'https://graph.facebook.com/v12.0/me/messages?access_token={PAGE_ACCESS_TOKEN}'
@@ -69,7 +79,10 @@ def send_message(recipient_id, message_text):
         'recipient': {'id': recipient_id},
         'message': {'text': message_text}
     }
-    requests.post(url, json=payload)
+    try:
+        requests.post(url, json=payload)
+    except Exception as e:
+        print(f"Failed to send message: {str(e)}")
 
 if __name__ == '__main__':
     app.run(port=5000)
