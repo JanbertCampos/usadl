@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify
+from flask import Flask, request
 import os
 import requests
 import re
@@ -14,25 +14,25 @@ VERIFY_TOKEN = os.environ.get('VERIFY_TOKEN', '12345')
 # Initialize the Inference client
 client = InferenceClient(api_key=HUGGINGFACES_API_KEY)
 
+# Dictionary to hold user contexts
+user_context = {}
+
 @app.route('/webhook', methods=['GET', 'POST'])
 def webhook():
     if request.method == 'GET':
-        # Verify the token for the webhook
         if request.args.get('hub.verify_token') == VERIFY_TOKEN:
             return request.args.get('hub.challenge'), 200
         return 'Unauthorized', 403
 
-    # Handle incoming messages
     data = request.get_json()
     handle_message(data)
     return 'OK', 200
 
 def handle_message(data):
-    # Check if the message contains an attachment
     messaging_events = data['entry'][0]['messaging']
     for event in messaging_events:
         sender_id = event['sender']['id']
-
+        
         if 'message' in event:
             message = event['message']
             
@@ -41,9 +41,22 @@ def handle_message(data):
                     if attachment['type'] == 'image':
                         image_url = attachment['payload']['url']
                         response = describe_image(image_url)
+                        user_context[sender_id] = response  # Store the description
                         send_message(sender_id, response)
             elif 'text' in message:
-                send_message(sender_id, "Please send an image for analysis.")
+                text_query = message['text']
+                if sender_id in user_context:
+                    # Respond based on previous description
+                    send_message(sender_id, handle_query(text_query, user_context[sender_id]))
+                else:
+                    send_message(sender_id, "Please send an image for analysis.")
+
+def handle_query(query, description):
+    if "color" in query.lower():
+        # Simple check for colors mentioned in the description
+        # You can improve this logic based on your needs
+        return "The description does not include specific color details. Please provide the image for color analysis."
+    return "I'm not sure how to respond to that."
 
 def describe_image(image_url):
     if not image_url.startswith(('http://', 'https://')):
@@ -65,15 +78,13 @@ def describe_image(image_url):
             stream=False,
         )
 
-        # Accessing the generated content directly
         if response.choices and len(response.choices) > 0:
-            return response.choices[0].message['content']  # Updated line
+            return response.choices[0].message['content']
         else:
             return "No description could be generated."
 
     except Exception as e:
         return f"Error processing image: {str(e)}"
-
 
 def send_message(recipient_id, message_text):
     url = f'https://graph.facebook.com/v12.0/me/messages?access_token={PAGE_ACCESS_TOKEN}'
