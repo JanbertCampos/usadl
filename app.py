@@ -14,9 +14,6 @@ VERIFY_TOKEN = os.environ.get('VERIFY_TOKEN', '12345')
 # Initialize the Inference client
 client = InferenceClient(api_key=HUGGINGFACES_API_KEY)
 
-# Dictionary to hold user contexts
-user_context = {}
-
 @app.route('/webhook', methods=['GET', 'POST'])
 def webhook():
     if request.method == 'GET':
@@ -31,24 +28,22 @@ def webhook():
     return 'OK', 200
 
 def handle_message(data):
-    # Assuming data structure contains sender ID and message text
-    sender_id = data['entry'][0]['messaging'][0]['sender']['id']
-    message_text = data['entry'][0]['messaging'][0].get('message', {}).get('text')
+    # Check if the message contains an attachment
+    messaging_events = data['entry'][0]['messaging']
+    for event in messaging_events:
+        sender_id = event['sender']['id']
 
-    if message_text:
-        # Call your image processing function here
-        image_url = extract_image_url(message_text)
-        if image_url:
-            response = describe_image(image_url)
-            send_message(sender_id, response)
-        else:
-            send_message(sender_id, "No valid image URL found in your message.")
-
-def extract_image_url(message_text):
-    # Simple regex to extract URLs from the message text
-    url_pattern = r'https?://[^\s]+'
-    match = re.search(url_pattern, message_text)
-    return match.group(0) if match else None
+        if 'message' in event:
+            message = event['message']
+            
+            if 'attachments' in message:
+                for attachment in message['attachments']:
+                    if attachment['type'] == 'image':
+                        image_url = attachment['payload']['url']
+                        response = describe_image(image_url)
+                        send_message(sender_id, response)
+            elif 'text' in message:
+                send_message(sender_id, "Please send an image for analysis.")
 
 def describe_image(image_url):
     if not image_url.startswith(('http://', 'https://')):
@@ -67,7 +62,7 @@ def describe_image(image_url):
                 }
             ],
             max_tokens=500,
-            stream=False,  # Set to False to get the full response at once
+            stream=False,
         ):
             return message.choices[0].delta.content
     except Exception as e:
